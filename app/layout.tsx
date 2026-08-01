@@ -4,6 +4,7 @@ import "@fontsource-variable/geist-mono";
 import "./globals.css";
 import "./fonts.css";
 import "./settings.css";
+import "./dashboard-theme.css";
 
 export const metadata: Metadata = {
   title: "Traidin Market Data",

@@ -377,7 +377,7 @@ export function EventConsole({
   const [query, setQuery] = useState("");
   const [level, setLevel] = useState("ALL");
   const [clearedAt, setClearedAt] = useState(0);
-  const end = useRef<HTMLDivElement>(null);
+  const consoleBody = useRef<HTMLDivElement>(null);
   const visible = useMemo(
     () =>
       events
@@ -391,7 +391,12 @@ export function EventConsole({
     [events, level, query, clearedAt],
   );
   useEffect(() => {
-    if (auto && !paused) end.current?.scrollIntoView({ behavior: "smooth" });
+    if (auto && !paused && consoleBody.current) {
+      consoleBody.current.scrollTo({
+        top: consoleBody.current.scrollHeight,
+        behavior: "smooth",
+      });
+    }
   }, [visible.length, auto, paused]);
   const rows = visible.slice(full ? -700 : -220);
   return (
@@ -438,7 +443,7 @@ export function EventConsole({
           </button>
         </div>
       </div>
-      <div className="console-body">
+      <div className="console-body" ref={consoleBody}>
         {rows.map((e, i) => (
           <div className="log" key={e.id ?? `${e.timestamp}${i}`}>
             <time>{fmtTime(e.timestamp)}</time>
@@ -453,7 +458,6 @@ export function EventConsole({
             {e.durationMs != null && <small>{e.durationMs}ms</small>}
           </div>
         ))}
-        <div ref={end} />
       </div>
     </section>
   );
