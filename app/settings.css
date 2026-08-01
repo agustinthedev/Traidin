@@ -1,0 +1,13 @@
+.settings-form > label {
+  display: grid;
+  grid-template-columns: 1fr 1.5fr;
+  align-items: center;
+  padding: 8px 12px;
+  border-bottom: 1px solid #171e27;
+  color: var(--muted);
+  font: 9px var(--mono);
+}
+.settings-form > label input { height: 29px; background: #090d12; color: #cbd5e1; border: 1px solid var(--line2); padding: 0 8px; }
+.settings-form > label.settings-check { display: flex; gap: 8px; }
+.settings-form > .primary { margin: 10px 12px; }
+.settings-notice { color: var(--green); font: 9px var(--mono); }

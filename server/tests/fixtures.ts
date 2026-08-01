@@ -1,0 +1,3 @@
+import type { Candle } from "../domain/candle.js";
+import { EXCHANGE, MARKET } from "../domain/candle.js";
+export function candle(openTime: number, overrides: Partial<Candle> = {}): Candle { return { exchange: EXCHANGE, market: MARKET, symbol: "BTCUSDT", timeframe: "1m", openTime: new Date(openTime), closeTime: new Date(openTime + 59_999), open: "100.10000000", high: "102.20000000", low: "99.90000000", close: "101.30000000", volume: "12.34567890", quoteVolume: "1245.00000000", tradeCount: 42, takerBuyBaseVolume: "7.10000000", takerBuyQuoteVolume: "716.00000000", firstTradeId: 100, lastTradeId: 141, isClosed: true, isComplete: true, source: "REST_BACKFILL", eventTime: null, receivedAt: new Date(openTime + 60_100), ...overrides }; }
