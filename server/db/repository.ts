@@ -370,6 +370,7 @@ export const jobRepository = {
       checkpointTime: "checkpoint_time",
       downloadedCandles: "downloaded_candles",
       persistedCandles: "persisted_candles",
+      estimatedCandles: "estimated_candles",
       requestCount: "request_count",
       startedAt: "started_at",
       completedAt: "completed_at",

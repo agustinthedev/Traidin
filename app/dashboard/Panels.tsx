@@ -230,9 +230,15 @@ export function Backfills({
           </thead>
           <tbody>
             {jobs.map((j) => {
-              const progress = j.estimatedCandles
-                ? Math.min(100, (j.persistedCandles / j.estimatedCandles) * 100)
-                : 0;
+              const progress =
+                j.status === "COMPLETED"
+                  ? 100
+                  : j.estimatedCandles
+                    ? Math.min(
+                        100,
+                        (j.persistedCandles / j.estimatedCandles) * 100,
+                      )
+                    : 0;
               return (
                 <tr key={j.id}>
                   <td>

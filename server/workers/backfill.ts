@@ -180,6 +180,7 @@ export class BackfillWorker {
       }
       await jobRepository.update(initial.id, {
         status: "COMPLETED",
+        estimatedCandles: persisted,
         completedAt: new Date(),
       });
       await eventBus.emit({
