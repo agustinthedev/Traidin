@@ -1,4 +1,5 @@
 import { config } from "../config.js";
+import WebSocket from "ws";
 import { eventBus } from "../events/bus.js";
 import { reconnects } from "../observability.js";
 import { normalizeWsKline } from "./normalize.js";
@@ -17,17 +18,17 @@ export class BinanceKlineStream {
       void eventBus.emit({ level: "WARN", component: "binance-ws", event: "WEBSOCKET_CONNECT_TIMEOUT", message: "WebSocket handshake timed out; replacing connection" });
       this.replaceStaleSocket();
     }, 10_000);
-    socket.addEventListener("open", () => { if (generation !== this.generation) return socket.close(); if (this.connectTimeout) clearTimeout(this.connectTimeout); this.attempt = 0; this.lastMessageAt = Date.now(); void eventBus.emit({ level: "INFO", component: "binance-ws", event: "WEBSOCKET_CONNECTED", message: `Subscribed ${this.symbols.join(", ")} ${this.interval}` }); void this.handlers.onConnected(); });
-    socket.addEventListener("message", (message) => { if (generation !== this.generation) return; this.lastMessageAt = Date.now(); try { const payload = JSON.parse(String(message.data)) as unknown; const candle = normalizeWsKline(payload, new Date()); void this.handlers.onCandle(candle); } catch (error) { void eventBus.emit({ level: "ERROR", component: "binance-ws", event: "DATA_VALIDATION_FAILED", message: error instanceof Error ? error.message : "Invalid WebSocket payload", errorCode: "PAYLOAD_INVALID" }); } });
-    socket.addEventListener("error", () => { void eventBus.emit({ level: "WARN", component: "binance-ws", event: "WEBSOCKET_ERROR", message: "WebSocket transport error" }); });
-    socket.addEventListener("close", (close) => { if (generation !== this.generation) return; if (this.connectTimeout) clearTimeout(this.connectTimeout); void this.handlers.onDisconnected(`${close.code} ${close.reason}`.trim()); void eventBus.emit({ level: "WARN", component: "binance-ws", event: "WEBSOCKET_DISCONNECTED", message: `WebSocket disconnected (${close.code})` }); if (!this.stopped) void this.reconnect(generation); });
+    socket.on("open", () => { if (generation !== this.generation) return socket.close(); if (this.connectTimeout) clearTimeout(this.connectTimeout); this.attempt = 0; this.lastMessageAt = Date.now(); void eventBus.emit({ level: "INFO", component: "binance-ws", event: "WEBSOCKET_CONNECTED", message: `Subscribed ${this.symbols.join(", ")} ${this.interval}` }); void this.handlers.onConnected(); });
+    socket.on("message", (data) => { if (generation !== this.generation) return; this.lastMessageAt = Date.now(); try { const payload = JSON.parse(data.toString()) as unknown; const candle = normalizeWsKline(payload, new Date()); void this.handlers.onCandle(candle); } catch (error) { void eventBus.emit({ level: "ERROR", component: "binance-ws", event: "DATA_VALIDATION_FAILED", message: error instanceof Error ? error.message : "Invalid WebSocket payload", errorCode: "PAYLOAD_INVALID" }); } });
+    socket.on("error", (error) => { void eventBus.emit({ level: "WARN", component: "binance-ws", event: "WEBSOCKET_ERROR", message: `WebSocket transport error: ${error.message}`, errorCode: (error as { code?: string }).code }); });
+    socket.on("close", (code, reason) => { if (generation !== this.generation) return; if (this.connectTimeout) clearTimeout(this.connectTimeout); void this.handlers.onDisconnected(`${code} ${reason.toString()}`.trim()); void eventBus.emit({ level: "WARN", component: "binance-ws", event: "WEBSOCKET_DISCONNECTED", message: `WebSocket disconnected (${code})` }); if (!this.stopped) void this.reconnect(generation); });
   }
   private replaceStaleSocket() {
     const previous = this.socket;
     this.generation++;
     this.lastMessageAt = 0;
     if (this.connectTimeout) clearTimeout(this.connectTimeout);
-    previous?.close(4000, "stale stream");
+    previous?.terminate();
     setTimeout(() => {
       if (!this.stopped) this.connect();
     }, 250);
