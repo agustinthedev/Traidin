@@ -56,6 +56,14 @@ export class GapRepairWorker {
         downloaded = gap.downloadedCandles,
         requests = gap.requestCount;
       while (cursor <= gap.gapEnd.getTime()) {
+        if (jobRepository.hasActive()) {
+          await gapRepository.update(
+            gap.id,
+            "DETECTED",
+            "Deferred while a backfill job is active",
+          );
+          return;
+        }
         const end = Math.min(gap.gapEnd.getTime(), cursor + 1499 * step);
         const batch = await binance.fetchKlines(
           gap.symbol,
