@@ -1,36 +1,36 @@
 # SQLite storage design
 
-## Decisión y volumen
+## Decision and volume
 
-SQLite es la base local obligatoria: simplifica instalación y operación, mantiene el conjunto de datos portable y soporta varios millones de velas cuando las consultas están indexadas y las escrituras se agrupan. Dos símbolos con dos años de 1m representan aproximadamente 2,1 millones de filas canónicas, más agregados, jobs, gaps, metadata y eventos.
+SQLite is the required local database: it simplifies installation and operation, keeps the dataset portable, and supports several million candles when queries are indexed and writes are batched. Two symbols with two years of 1m data represent approximately 2.1 million canonical rows, plus aggregates, jobs, gaps, metadata, and events.
 
-Los precios y cantidades se guardan como texto decimal canónico y se calculan con `decimal.js`; no se usa `REAL` para aritmética financiera. Los timestamps se guardan como epoch-milliseconds UTC. La identidad única es `(exchange, market, symbol, timeframe, open_time)`.
+Prices and quantities are stored as canonical decimal text and calculated with `decimal.js`; `REAL` is not used for financial arithmetic. Timestamps are stored as UTC epoch milliseconds. The unique identity is `(exchange, market, symbol, timeframe, open_time)`.
 
-## WAL y conexiones
+## WAL and connections
 
-Al abrir la base se aplican `journal_mode=WAL`, `synchronous=NORMAL`, `foreign_keys=ON`, `busy_timeout=5000`, `temp_store=MEMORY`, un cache negativo acotado y `mmap_size`. `NORMAL` evita un fsync extra por transacción manteniendo la durabilidad apropiada de WAL; no equivale a desactivar sincronización. Hay una conexión dedicada de escritura y otra de lectura. Las lecturas del dashboard continúan mientras el writer confirma lotes cortos.
+Database startup applies `journal_mode=WAL`, `synchronous=NORMAL`, `foreign_keys=ON`, `busy_timeout=5000`, `temp_store=MEMORY`, a bounded negative cache size, and `mmap_size`. `NORMAL` avoids an extra fsync per transaction while retaining WAL-appropriate durability; it does not disable synchronization. There is one dedicated writer connection and one reader connection. Dashboard reads continue while the writer commits short batches.
 
-## Coordinación del writer
+## Writer coordination
 
-Todos los productores pasan por `SQLiteWriter`, una cola de prioridad estable:
+All producers use `SQLiteWriter`, a stable priority queue:
 
-1. velas live cerradas;
-2. reparación de gaps;
+1. closed live candles;
+2. gap repair;
 3. metadata;
-4. jobs y eventos;
+4. jobs and events;
 5. backfill;
-6. reconstrucción de agregados.
+6. aggregate rebuilds.
 
-Un solo writer ejecuta transacciones, reintenta `SQLITE_BUSY` con espera acotada y expone profundidad, latencias y reintentos. Backfill usa lotes REST de hasta 1.500 y cede entre commits; las reconstrucciones agregadas confirman hasta 500 buckets por lote. Un checkpoint se actualiza sólo después del commit de velas.
+A single writer executes transactions, retries `SQLITE_BUSY` with bounded waits, and exposes queue depth, latency, and retry metrics. Backfill uses REST batches of up to 1,500 candles and yields between commits; aggregate rebuilds commit up to 500 buckets per batch. A checkpoint is updated only after the candle commit.
 
-## Esquema e índices
+## Schema and indexes
 
-Las migraciones versionadas crean `candles`, `backfill_jobs`, `gaps`, `system_events`, `symbol_metadata` y `system_state`. Los índices principales cubren `symbol/timeframe/open_time`, source, completitud, estado de jobs, gaps activos y eventos por tiempo/filtro. Las consultas históricas exigen símbolo, timeframe, rango y límite/offset; no cargan históricos completos al frontend.
+Versioned migrations create `candles`, `backfill_jobs`, `gaps`, `system_events`, `symbol_metadata`, and `system_state`. The main indexes cover `symbol/timeframe/open_time`, source, completion status, job state, active gaps, and events by time/filter. Historical queries require symbol, timeframe, range, and limit/offset; complete histories are never loaded into the frontend.
 
-## Mantenimiento y backups
+## Maintenance and backups
 
-La página Database y la API muestran tamaños de DB/WAL, PRAGMAs, integridad y métricas del writer. Las acciones manuales ejecutan checkpoint WAL, `PRAGMA optimize`, `ANALYZE` y backup consistente mediante `VACUUM INTO`. `VACUUM` normal nunca se ejecuta durante ingesta. Los backups usan un directorio configurable y nombre UTC; secretos y `.env` quedan fuera.
+The Database page and API expose DB/WAL size, PRAGMAs, integrity, and writer metrics. Manual actions run a WAL checkpoint, `PRAGMA optimize`, `ANALYZE`, and a consistent backup through `VACUUM INTO`. Regular `VACUUM` never runs during ingestion. Backups use a configurable directory and UTC filename; secrets and `.env` remain excluded.
 
-## Limitaciones y migración futura
+## Limits and future migration
 
-SQLite mantiene un único writer efectivo. Debe reconsiderarse PostgreSQL sólo si aparecen múltiples procesos o hosts escritores, alta disponibilidad, replicación, usuarios concurrentes con escrituras sostenidas, o un volumen/retención que ya no alcance latencias locales aceptables. Esa eventual migración se limita por la capa de repositorios; no forma parte de esta fase.
+SQLite maintains one effective writer. PostgreSQL should be reconsidered only for multiple writer processes or hosts, high availability, replication, concurrent users with sustained writes, or a volume/retention requirement that no longer meets acceptable local latency. Any future migration is limited to the repository layer and is not part of this phase.

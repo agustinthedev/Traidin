@@ -1,12 +1,12 @@
-# Desarrollo y operación local
+# Local development and operations
 
-## Configuración
+## Configuration
 
-Copiar `.env.example` a `.env`. `DATABASE_URL` acepta la forma `sqlite:///./data/trading-platform.db`; el directorio se crea automáticamente. `SYMBOLS` y `AGGREGATED_TIMEFRAMES` son listas configurables. REST/WS, timeouts, backoff, batch size, retención, host/puerto, logs y backup también se controlan por variables documentadas en el ejemplo.
+Copy `.env.example` to `.env`. `DATABASE_URL` accepts `sqlite:///./data/trading-platform.db`; its directory is created automatically. `SYMBOLS` and `AGGREGATED_TIMEFRAMES` are configurable lists. REST/WS endpoints, timeouts, backoff, batch size, retention, host/port, logging, and backups are also controlled through the variables documented in the example file.
 
-Las credenciales son opcionales. Sólo el backend puede leerlas; el frontend recibe únicamente banderas configurado/no configurado. Pino redacta cabeceras y nombres sensibles. No se guardan claves en SQLite y no hay endpoints de órdenes.
+Credentials are optional. Only the backend can read them; the frontend receives only configured/not-configured flags. Pino redacts sensitive headers and field names. Keys are never stored in SQLite, and there are no order endpoints.
 
-## Ejecución sin Docker
+## Running without Docker
 
 ```powershell
 npm install
@@ -15,23 +15,23 @@ npm run db:migrate
 npm run dev:api
 ```
 
-En otra terminal ejecutar `npm run dev`. El backend aplica migraciones en cada apertura, verifica integridad, consulta REST/metadata, recupera jobs interrumpidos, busca continuidad reciente y conecta el stream público de klines.
+Run `npm run dev` in another terminal. At startup, the backend applies migrations, checks integrity, requests REST/metadata, recovers interrupted jobs, checks recent continuity, and connects the public kline stream.
 
-## Flujos
+## Flows
 
-- Live: las actualizaciones abiertas permanecen en memoria; sólo `x=true` se valida, escribe idempotentemente y emite `CANDLE_CLOSED`/`CANDLE_PERSISTED`.
-- Histórico: pagina en orden cronológico, confirma lotes, guarda checkpoint post-commit y admite pausa, cancelación, reintento y recuperación tras restart.
-- Gaps: compara timestamps alineados, deduplica rangos, descarga sólo faltantes con source `REST_GAP_REPAIR` y recalcula agregados afectados.
-- Agregación: 1m cerrado es canónico. Se construyen 5m, 15m, 1h, 4h, 1d y 1w en UTC. Día inicia 00:00 UTC; 4h se alinea a 00/04/08/12/16/20; semana inicia lunes 00:00 UTC. Un bucket con minutos faltantes se marca incompleto y dispara repair.
+- Live: open updates remain in memory; only `x=true` is validated, written idempotently, and emitted as `CANDLE_CLOSED`/`CANDLE_PERSISTED`.
+- Historical: pages in chronological order, commits batches, stores a post-commit checkpoint, and supports pause, cancellation, retry, and restart recovery.
+- Gaps: compares aligned timestamps, deduplicates ranges, downloads only missing candles with `REST_GAP_REPAIR`, and rebuilds affected aggregates.
+- Aggregation: closed 1m candles are canonical. 5m, 15m, 1h, 4h, 1d, and 1w candles are built in UTC. Days begin at 00:00 UTC; 4h aligns to 00/04/08/12/16/20; weeks begin Monday at 00:00 UTC. A bucket with missing minutes is marked incomplete and triggers repair.
 
-## Jobs, health y rate limits
+## Jobs, health, and rate limits
 
-Los jobs `RUNNING`/`CANCELLING` vuelven a `PENDING` al arrancar y retoman desde su checkpoint. El adapter corrige clock skew con `/time`, registra headers de peso, aplica timeout y exponential backoff con jitter. Health combina aplicación, SQLite, writer, REST, WebSocket, persistencia, histórico, repair, agregación y SSE; gaps recientes o stream estancado degradan el estado.
+`RUNNING`/`CANCELLING` jobs return to `PENDING` on startup and resume from their checkpoint. The adapter corrects clock skew through `/time`, records weight headers, applies timeouts, and uses exponential backoff with jitter. Health combines the application, SQLite, writer, REST, WebSocket, persistence, historical worker, repair, aggregation, and SSE; recent gaps or a stalled stream degrade the state.
 
-## Migraciones y mantenimiento
+## Migrations and maintenance
 
-Las migraciones están en `server/db/migrations` y se registran en `schema_migrations`. No se deben modificar migraciones aplicadas: agregar una nueva versión. Use `npm run db:backup` antes de cambios importantes, `npm run db:optimize` para mantenimiento seguro y la página Database para checkpoint/backup. El archivo DB, WAL, backups de desarrollo y `.env` están ignorados por Git.
+Migrations live in `server/db/migrations` and are recorded in `schema_migrations`. Do not modify an applied migration; add a new version instead. Use `npm run db:backup` before important changes, `npm run db:optimize` for safe maintenance, and the Database page for checkpoints and backups. The database file, WAL, development backups, and `.env` are ignored by Git.
 
-## Verificación
+## Verification
 
-Ejecutar `npm run typecheck`, `npm test`, `npm run test:integration` y `npm run build`. `npm run perf:sqlite` crea una base ignorada en `data/performance`, inserta 250.000 velas en bulk, intercala escrituras live/lecturas y reporta throughput, latencias, tamaño, idempotencia y locks. Si el backend está en 4100 también mide respuestas de health durante la carga.
+Run `npm run typecheck`, `npm test`, `npm run test:integration`, and `npm run build`. `npm run perf:sqlite` creates an ignored database under `data/performance`, inserts 250,000 candles in bulk, interleaves live writes and reads, and reports throughput, latency, size, idempotency, and locks. If the backend runs on 4100, it also measures health responses during load.

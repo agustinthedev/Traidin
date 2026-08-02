@@ -1,10 +1,10 @@
 # Treidin Market Data
 
-Primera fase de una plataforma local de datos para Binance USD-M Futures. Recibe velas 1m de BTCUSDT y ETHUSDT, mantiene histórico, repara gaps, genera timeframes superiores y expone un dashboard operativo. La persistencia es exclusivamente SQLite; no requiere PostgreSQL, Docker ni servicios de infraestructura.
+The first phase of a local market-data platform for Binance USD-M Futures. It receives 1-minute BTCUSDT and ETHUSDT candles, maintains historical data, repairs gaps, creates higher timeframes, and provides an operations dashboard. Persistence is exclusively SQLite; PostgreSQL, Docker, and infrastructure services are not required.
 
-## Inicio rápido
+## Quick start
 
-Requisitos: Node.js 22.13 o posterior.
+Requirements: Node.js 22.13 or later.
 
 ```powershell
 npm install
@@ -12,29 +12,29 @@ Copy-Item .env.example .env
 npm run db:migrate
 ```
 
-En dos terminales:
+Run these commands in two terminals:
 
 ```powershell
 npm run dev:api
 npm run dev
 ```
 
-Backend: `http://127.0.0.1:4100`. El frontend imprime su puerto local al iniciar (normalmente 3000; elige otro si está ocupado). Los streams y endpoints públicos de Binance no requieren credenciales. `BINANCE_API_KEY` y `BINANCE_API_SECRET` son opcionales, se leen sólo en backend y nunca se persisten ni se exponen.
+Backend: `http://127.0.0.1:4100`. The frontend prints its local port at startup (usually 3000; choose another if it is already in use). Binance public streams and endpoints do not require credentials. `BINANCE_API_KEY` and `BINANCE_API_SECRET` are optional, backend-only, and are never persisted or exposed.
 
-## Comandos
+## Commands
 
 ```text
-npm test                 pruebas unitarias y SQLite temporal
-npm run test:integration integración pública real de Binance
-npm run typecheck        validación TypeScript
-npm run build            build de producción
-npm run perf:sqlite      prueba local de 250.000 velas
-npm run db:backup        backup consistente con VACUUM INTO
+npm test                 unit tests and temporary SQLite database
+npm run test:integration real Binance public integration tests
+npm run typecheck        TypeScript validation
+npm run build            production build
+npm run perf:sqlite      local 250,000-candle performance test
+npm run db:backup        consistent backup with VACUUM INTO
 npm run db:optimize      PRAGMA optimize + ANALYZE
 ```
 
-La configuración está documentada en [desarrollo local](docs/local-development.md), el diseño en [arquitectura](docs/architecture.md), el almacenamiento en [SQLite storage design](docs/sqlite-storage-design.md), la [prueba de rendimiento](docs/performance-results.md) y la inspección del stream real en [Binance WebSocket payload analysis](docs/binance-websocket-payload-analysis.md).
+Configuration is documented in [local development](docs/local-development.md), the design in [architecture](docs/architecture.md), storage in [SQLite storage design](docs/sqlite-storage-design.md), the [performance test](docs/performance-results.md), and live-stream inspection in [Binance WebSocket payload analysis](docs/binance-websocket-payload-analysis.md).
 
-## Alcance
+## Scope
 
-Incluye ingesta, histórico, calidad, agregación, observabilidad y dashboard. No incluye estrategias, agents, backtesting, paper trading, posiciones ni ejecución de órdenes.
+Includes ingestion, historical data, data quality, aggregation, observability, and the dashboard. It does not include strategies, agents, backtesting, paper trading, positions, or order execution.
