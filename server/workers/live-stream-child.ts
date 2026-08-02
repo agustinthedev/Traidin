@@ -1,31 +1,17 @@
 import WebSocket from "ws";
 
-type ParentConfig = { type: "start"; symbols: string[]; baseUrl: string } | { type: "stop" };
+type ParentConfig =
+  | { type: "start"; symbols: string[]; baseUrl: string }
+  | { type: "snapshot" }
+  | { type: "stop" };
 
 let stopped = false;
 const sockets = new Map<string, WebSocket>();
 const lastMessageAt = new Map<string, number>();
-const pendingCandles = new Map<string, { raw: string; receivedAt: number }>();
-const candleInFlight = new Set<string>();
+const latestCandles = new Map<string, { raw: string; receivedAt: number }>();
 
 function send(message: Record<string, unknown>) {
   if (process.send) process.send(message);
-}
-
-function flushCandle(symbol: string) {
-  if (candleInFlight.has(symbol)) return;
-  const candle = pendingCandles.get(symbol);
-  if (!candle) return;
-  pendingCandles.delete(symbol);
-  if (!process.send) return;
-  candleInFlight.add(symbol);
-  // Do not enqueue an unbounded series of IPC frames. The callback means the
-  // previous frame has left this process; meanwhile pendingCandles retains
-  // only the most recent mutable state for this symbol.
-  process.send({ type: "candle", symbol, ...candle }, undefined, undefined, () => {
-    candleInFlight.delete(symbol);
-    flushCandle(symbol);
-  });
 }
 
 function connect(symbol: string, baseUrl: string) {
@@ -43,16 +29,9 @@ function connect(symbol: string, baseUrl: string) {
     const raw = data.toString();
     lastMessageAt.set(symbol, receivedAt);
 
-    // Binance can publish many mutable updates for the same open candle per
-    // second. The parent only needs the newest state, so coalesce them before
-    // crossing the IPC boundary. A completed candle is never delayed.
-    pendingCandles.set(symbol, { raw, receivedAt });
-    try {
-      const payload = JSON.parse(raw) as { data?: { k?: { x?: boolean } }; k?: { x?: boolean } };
-      if (payload.data?.k?.x || payload.k?.x) flushCandle(symbol);
-    } catch {
-      flushCandle(symbol);
-    }
+    // Keep the newest mutable candle here. The parent polls a compact
+    // snapshot, preventing high-rate WebSocket traffic from filling IPC.
+    latestCandles.set(symbol, { raw, receivedAt });
   });
   socket.on("error", (error) => send({ type: "error", symbol, message: error.message, code: (error as { code?: string }).code }));
   socket.on("close", (code) => {
@@ -74,18 +53,16 @@ const watchdog = setInterval(() => {
   }
 }, 3_000);
 
-const flushTimer = setInterval(() => {
-  for (const symbol of pendingCandles.keys()) flushCandle(symbol);
-}, 1_000);
-
 process.on("message", (message: ParentConfig) => {
   if (message.type === "start") {
     for (const symbol of message.symbols) connect(symbol, message.baseUrl);
   }
+  if (message.type === "snapshot") {
+    send({ type: "snapshot", candles: [...latestCandles.entries()].map(([symbol, candle]) => ({ symbol, ...candle })) });
+  }
   if (message.type === "stop") {
     stopped = true;
     clearInterval(watchdog);
-    clearInterval(flushTimer);
     for (const socket of sockets.values()) socket.terminate();
     process.exit(0);
   }
