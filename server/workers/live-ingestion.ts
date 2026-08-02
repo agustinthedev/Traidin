@@ -7,15 +7,33 @@ import { closedCandles, ingestLatency, persistedCandles, persistLatency, wsMessa
 import { liveState } from "../live-state.js";
 import { aggregationEngine } from "./aggregation.js";
 import { gapService } from "../services/gap-service.js";
-import { gapRepairWorker } from "./gap-repair.js";
 import { binance } from "../binance/adapter.js";
 
 export class LiveIngestionWorker {
   private stream?: BinanceKlineStream; private emitted = new Map<string, number>(); healthy = false;
   start() { liveState.init(config.symbols); this.stream = new BinanceKlineStream(config.symbols, "1m", { onCandle: (c) => this.onCandle(c), onConnected: () => this.onConnected(), onDisconnected: (reason) => this.onDisconnected(reason), onStale: () => this.onStale() }); this.stream.start(); }
   stop() { this.stream?.stop(); }
-  private async onConnected() { liveState.websocketConnected = true; for (const state of liveState.symbols.values()) state.state = "SYNCING"; await this.verifyContinuity(); const active = gapRepository.list(true); this.healthy = active.length === 0; for (const state of liveState.symbols.values()) state.state = this.healthy ? "HEALTHY" : "REPAIRING"; }
-  private async verifyContinuity() { const expected = Math.floor(binance.nowMs() / 60_000) * 60_000 - 60_000; for (const symbol of config.symbols) { const latest = candleRepository.latest(symbol, "1m"); if (latest && latest.openTime.getTime() < expected) await gapService.scan(symbol, "1m", new Date(latest.openTime.getTime() + 60_000), new Date(expected)); } for (let i = 0; i < 30 && gapRepository.list(true).length; i++) { await gapRepairWorker.runOnce(); await new Promise((resolve) => setTimeout(resolve, 100)); } }
+  private onConnected() {
+    liveState.websocketConnected = true;
+    this.healthy = true;
+    for (const state of liveState.symbols.values()) state.state = "HEALTHY";
+    setTimeout(() => void this.verifyContinuity(), 5_000);
+  }
+  private async verifyContinuity() {
+    if (!liveState.websocketFresh()) return;
+    const expected = Math.floor(binance.nowMs() / 60_000) * 60_000 - 60_000;
+    for (const symbol of config.symbols) {
+      if (!liveState.websocketFresh()) return;
+      const latest = candleRepository.latest(symbol, "1m");
+      if (latest && latest.openTime.getTime() < expected)
+        await gapService.scan(
+          symbol,
+          "1m",
+          new Date(latest.openTime.getTime() + 60_000),
+          new Date(expected),
+        );
+    }
+  }
   private onDisconnected(reason: string) { void reason; liveState.websocketConnected = false; this.healthy = false; for (const state of liveState.symbols.values()) state.state = "DISCONNECTED"; }
   private async onStale() { this.healthy = false; for (const state of liveState.symbols.values()) state.state = "STALE"; await eventBus.emit({ level: "WARN", component: "live-ingestion", event: "STREAM_STALE", message: "No market messages for 15 seconds" }); }
   private async onCandle(candle: Candle) {
