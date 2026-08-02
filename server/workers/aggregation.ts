@@ -118,7 +118,7 @@ export class AggregationEngine {
     }
   }
   async rebuild(symbol: string, timeframe: string, start: Date, end: Date) {
-    const batchSize = 500;
+    const batchSize = Math.min(config.SQLITE_BATCH_SIZE, 250);
     const pending: Candle[] = [];
     let cursor = bucketOpen(start, timeframe),
       completed = 0,
@@ -152,9 +152,11 @@ export class AggregationEngine {
       }
       cursor = new Date(cursor.getTime() + intervalMs(timeframe));
     }
-    if (pending.length)
+    if (pending.length) {
       rowsAffected += (await candleRepository.upsertMany(pending, 6))
         .rowsAffected;
+      await new Promise<void>((resolve) => setImmediate(resolve));
+    }
     liveState.aggregated += completed;
     await eventBus.emit({
       level: "AGG",

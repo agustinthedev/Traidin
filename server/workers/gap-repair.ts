@@ -76,8 +76,17 @@ export class GapRepairWorker {
         requests++;
         downloaded += batch.length;
         if (!batch.length) break;
-        const write = await candleRepository.upsertMany(batch, 2);
-        total += write.rowsAffected;
+        let rowsAffected = 0;
+        const commitSize = Math.min(config.SQLITE_BATCH_SIZE, 250);
+        for (let offset = 0; offset < batch.length; offset += commitSize) {
+          const write = await candleRepository.upsertMany(
+            batch.slice(offset, offset + commitSize),
+            2,
+          );
+          rowsAffected += write.rowsAffected;
+          await new Promise<void>((resolve) => setImmediate(resolve));
+        }
+        total += rowsAffected;
         const checkpoint = batch.at(-1)!.openTime;
         cursor = checkpoint.getTime() + step;
         await gapRepository.updateProgress(gap.id, {
@@ -86,7 +95,6 @@ export class GapRepairWorker {
           requestCount: requests,
           checkpointTime: checkpoint,
         });
-        await new Promise<void>((resolve) => setImmediate(resolve));
       }
       await gapRepository.update(gap.id, "REPAIRED");
       if (gap.timeframe === "1m") {

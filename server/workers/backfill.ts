@@ -182,26 +182,35 @@ export class BackfillWorker {
           },
         });
       }
-      await gapService.scan(
-        initial.symbol,
-        initial.timeframe,
-        initial.startTime,
-        new Date(target),
-      );
-      if (initial.timeframe === "1m") {
-        for (const timeframe of config.aggregatedTimeframes) {
-          const lastFullBucket = new Date(
-            bucketOpen(new Date(target), timeframe).getTime() -
-              intervalMs(timeframe),
-          );
-          if (lastFullBucket >= initial.startTime)
-            await aggregationEngine.rebuild(
-              initial.symbol,
-              timeframe,
-              initial.startTime,
-              lastFullBucket,
+      const finalizationHeartbeat = setInterval(() => {
+        void jobRepository
+          .update(initial.id, { requestCount: requests })
+          .catch(() => {});
+      }, 30_000);
+      try {
+        await gapService.scan(
+          initial.symbol,
+          initial.timeframe,
+          initial.startTime,
+          new Date(target),
+        );
+        if (initial.timeframe === "1m") {
+          for (const timeframe of config.aggregatedTimeframes) {
+            const lastFullBucket = new Date(
+              bucketOpen(new Date(target), timeframe).getTime() -
+                intervalMs(timeframe),
             );
+            if (lastFullBucket >= initial.startTime)
+              await aggregationEngine.rebuild(
+                initial.symbol,
+                timeframe,
+                initial.startTime,
+                lastFullBucket,
+              );
+          }
         }
+      } finally {
+        clearInterval(finalizationHeartbeat);
       }
       await jobRepository.update(initial.id, {
         status: "COMPLETED",
