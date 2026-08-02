@@ -397,11 +397,13 @@ export function Quality({
             </thead>
             <tbody>
               {gaps.map((g) => {
+                const persisted = Number(g.persistedCandles ?? 0);
+                const expected = Number(g.expectedCandles ?? 0);
                 const progress =
                   g.status === "REPAIRED"
                     ? 100
-                    : g.expectedCandles
-                      ? Math.min(100, (g.persistedCandles / g.expectedCandles) * 100)
+                    : expected
+                      ? Math.min(100, (persisted / expected) * 100)
                       : 0;
                 return (
                 <tr key={g.id}>
@@ -415,7 +417,7 @@ export function Quality({
                       <i style={{ width: `${progress}%` }} />
                     </div>
                     <small>
-                      {fmtNum(g.persistedCandles, 0)} / {fmtNum(g.expectedCandles, 0)} ({progress.toFixed(1)}%)
+                      {fmtNum(persisted, 0)} / {fmtNum(expected, 0)} ({progress.toFixed(1)}%)
                     </small>
                   </td>
                   <td>
