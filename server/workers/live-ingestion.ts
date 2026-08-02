@@ -74,7 +74,7 @@ export class LiveIngestionWorker {
   private async onStale(symbol: string) { this.healthy = false; const state = liveState.symbols.get(symbol); if (state) state.state = "STALE"; await eventBus.emit({ level: "WARN", component: "live-ingestion", event: "STREAM_STALE", message: `${symbol} has not received market messages for 15 seconds`, symbol }); }
   private async onCandle(candle: Candle) {
     wsMessages.inc(); liveState.messages++; const latency = Math.max(0, candle.receivedAt.getTime() + binance.serverTimeOffsetMs - (candle.eventTime?.getTime() ?? candle.receivedAt.getTime() + binance.serverTimeOffsetMs)); ingestLatency.observe(latency); const state = liveState.symbols.get(candle.symbol); if (!state) return;
-    state.openCandle = candle.isClosed ? undefined : candle; state.lastMessageAt = candle.receivedAt.toISOString(); state.latencyMs = latency;
+    state.openCandle = candle.isClosed ? undefined : candle; state.lastMessageAt = candle.receivedAt.toISOString(); state.latencyMs = latency; state.state = "HEALTHY"; this.healthy = liveState.websocketFresh();
     const now = Date.now();
     const shouldEmitOpenUpdate =
       candle.isClosed || now - (this.lastOpenEventAt.get(candle.symbol) ?? 0) >= 1_000;
