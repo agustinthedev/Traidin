@@ -324,6 +324,7 @@ export function Quality({
                     }),
                   ),
               );
+              await apiJson("/api/aggregations/reconcile", { method: "POST" });
               await refresh();
             }}
           >

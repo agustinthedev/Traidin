@@ -8,7 +8,21 @@ import { gapService } from "../services/gap-service.js";
 import { liveState } from "../live-state.js";
 
 export class AggregationEngine {
+  private reconciliationTimer?: NodeJS.Timeout;
+  private reconciling = false;
   healthy = true;
+  start() {
+    if (this.reconciliationTimer) return;
+    void this.reconcileIncomplete().catch(() => {});
+    this.reconciliationTimer = setInterval(
+      () => void this.reconcileIncomplete().catch(() => {}),
+      30_000,
+    );
+  }
+  stop() {
+    if (this.reconciliationTimer) clearInterval(this.reconciliationTimer);
+    this.reconciliationTimer = undefined;
+  }
   async onMinuteClosed(minute: Candle) {
     for (const timeframe of config.aggregatedTimeframes) {
       const bucket = bucketOpen(minute.openTime, timeframe);
@@ -43,6 +57,64 @@ export class AggregationEngine {
         : undefined,
     });
     return result;
+  }
+  async reconcileIncomplete(limit = 250) {
+    if (this.reconciling) return 0;
+    this.reconciling = true;
+    let rebuilt = 0;
+    try {
+      for (const candidate of candleRepository.incompleteAggregates(limit)) {
+        const expectedMinutes = intervalMs(candidate.timeframe) / 60_000;
+        const end = new Date(
+          candidate.openTime.getTime() +
+            intervalMs(candidate.timeframe) -
+            60_000,
+        );
+        const minutes = candleRepository.range(
+          candidate.symbol,
+          "1m",
+          candidate.openTime,
+          end,
+          expectedMinutes,
+        );
+        if (
+          minutes.length !== expectedMinutes ||
+          minutes.some((minute) => !minute.isClosed || !minute.isComplete)
+        )
+          continue;
+        const result = await this.buildBucket(
+          candidate.symbol,
+          candidate.timeframe,
+          candidate.openTime,
+        );
+        if (result?.candle.isComplete) rebuilt++;
+      }
+      this.healthy = true;
+      if (rebuilt)
+        await eventBus.emit({
+          level: "AGG",
+          component: "aggregation",
+          event: "AGGREGATION_RECONCILED",
+          message: `${rebuilt} incomplete aggregation(s) reconciled`,
+          rowsAffected: rebuilt,
+        });
+      return rebuilt;
+    } catch (error) {
+      this.healthy = false;
+      await eventBus.emit({
+        level: "ERROR",
+        component: "aggregation",
+        event: "AGGREGATION_RECONCILIATION_FAILED",
+        message:
+          error instanceof Error
+            ? error.message
+            : "Aggregation reconciliation failed",
+        errorCode: "AGGREGATION_RECONCILIATION_FAILED",
+      });
+      throw error;
+    } finally {
+      this.reconciling = false;
+    }
   }
   async rebuild(symbol: string, timeframe: string, start: Date, end: Date) {
     const batchSize = 500;

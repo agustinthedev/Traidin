@@ -143,6 +143,9 @@ export async function registerRoutes(app: FastifyInstance) {
     );
     return reply.code(202).send({ accepted: true });
   });
+  app.post("/api/aggregations/reconcile", async () => ({
+    rebuilt: await aggregationEngine.reconcileIncomplete(),
+  }));
   app.get("/api/metadata", async () => metadataRepository.list());
   app.post("/api/metadata/refresh", async () => ({
     refreshed: await refreshMetadata(config.symbols),

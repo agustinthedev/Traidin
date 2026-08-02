@@ -15,6 +15,7 @@ import { refreshMetadata } from "./services/metadata-service.js";
 import { backfillWorker } from "./workers/backfill.js";
 import { gapRepairWorker } from "./workers/gap-repair.js";
 import { liveIngestionWorker } from "./workers/live-ingestion.js";
+import { aggregationEngine } from "./workers/aggregation.js";
 import { systemStateRepository } from "./db/repository.js";
 
 const app = Fastify({
@@ -62,6 +63,7 @@ async function start() {
     });
   }
   if (config.START_WORKERS === "true") {
+    aggregationEngine.start();
     gapRepairWorker.start();
     await backfillWorker.start();
     liveIngestionWorker.start();
@@ -78,6 +80,7 @@ async function shutdown() {
   liveIngestionWorker.stop();
   backfillWorker.stop();
   gapRepairWorker.stop();
+  aggregationEngine.stop();
   await app.close();
   sqlite.close();
 }

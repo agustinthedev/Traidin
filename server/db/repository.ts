@@ -163,6 +163,15 @@ export class CandleRepository {
       )
       .all();
   }
+  incompleteAggregates(limit = 250) {
+    return (
+      sqlite.reader
+        .prepare(
+          "SELECT * FROM candles WHERE timeframe <> '1m' AND is_complete=0 ORDER BY open_time ASC LIMIT ?",
+        )
+        .all(limit) as SqlRow[]
+    ).map(mapCandle);
+  }
   missingRanges(
     symbol: string,
     timeframe: string,
