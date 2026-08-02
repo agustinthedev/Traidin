@@ -63,10 +63,10 @@ async function start() {
     });
   }
   if (config.START_WORKERS === "true") {
+    liveIngestionWorker.start();
     aggregationEngine.start();
     await gapRepairWorker.start();
     await backfillWorker.start();
-    liveIngestionWorker.start();
   }
   await app.listen({ host: config.API_HOST, port: config.API_PORT });
   await eventBus.emit({
