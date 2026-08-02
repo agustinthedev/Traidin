@@ -13,9 +13,12 @@ export class AggregationEngine {
   healthy = true;
   start() {
     if (this.reconciliationTimer) return;
-    void this.reconcileIncomplete().catch(() => {});
+    if (liveState.websocketFresh()) void this.reconcileIncomplete().catch(() => {});
     this.reconciliationTimer = setInterval(
-      () => void this.reconcileIncomplete().catch(() => {}),
+      () => {
+        if (liveState.websocketFresh())
+          void this.reconcileIncomplete().catch(() => {});
+      },
       30_000,
     );
   }
@@ -118,6 +121,7 @@ export class AggregationEngine {
     }
   }
   async rebuild(symbol: string, timeframe: string, start: Date, end: Date) {
+    if (!liveState.websocketFresh()) return 0;
     const batchSize = Math.min(config.SQLITE_BATCH_SIZE, 250);
     const pending: Candle[] = [];
     let cursor = bucketOpen(start, timeframe),
@@ -125,6 +129,7 @@ export class AggregationEngine {
       incomplete = 0,
       rowsAffected = 0;
     while (cursor <= end) {
+      if (!liveState.websocketFresh()) break;
       const bucketEnd = new Date(
         cursor.getTime() + intervalMs(timeframe) - 60_000,
       );

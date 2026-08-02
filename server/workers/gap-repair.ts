@@ -32,9 +32,17 @@ export class GapRepairWorker {
       errorCode: "GAP_REPAIR_STALLED",
     });
   }
+  private async deferForLiveStream(gapId: string) {
+    await gapRepository.update(
+      gapId,
+      "DETECTED",
+      "Deferred to protect the live WebSocket stream",
+    );
+  }
   async runOnce() {
     if (this.busy) return;
     if (jobRepository.hasActive()) return;
+    if (!liveState.websocketFresh()) return;
     const gap = await gapRepository.claimNext();
     if (!gap) return;
     this.busy = true;
@@ -56,6 +64,10 @@ export class GapRepairWorker {
         downloaded = gap.downloadedCandles,
         requests = gap.requestCount;
       while (cursor <= gap.gapEnd.getTime()) {
+        if (!liveState.websocketFresh()) {
+          await this.deferForLiveStream(gap.id);
+          return;
+        }
         if (jobRepository.hasActive()) {
           await gapRepository.update(
             gap.id,
@@ -85,6 +97,10 @@ export class GapRepairWorker {
           );
           rowsAffected += write.rowsAffected;
           await new Promise<void>((resolve) => setImmediate(resolve));
+          if (!liveState.websocketFresh()) {
+            await this.deferForLiveStream(gap.id);
+            return;
+          }
         }
         total += rowsAffected;
         const checkpoint = batch.at(-1)!.openTime;
@@ -103,6 +119,10 @@ export class GapRepairWorker {
           const finalBucket = bucketOpen(gap.gapEnd, timeframe);
           let scannedBuckets = 0;
           while (bucket <= finalBucket) {
+            if (!liveState.websocketFresh()) {
+              await this.deferForLiveStream(gap.id);
+              return;
+            }
             const existing = candleRepository.range(
               gap.symbol,
               timeframe,
