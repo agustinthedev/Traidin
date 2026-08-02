@@ -1,5 +1,5 @@
 import { binance } from "../binance/adapter.js";
-import { candleRepository, gapRepository } from "../db/repository.js";
+import { candleRepository, gapRepository, jobRepository } from "../db/repository.js";
 import { eventBus } from "../events/bus.js";
 import { liveState } from "../live-state.js";
 import { config } from "../config.js";
@@ -34,6 +34,7 @@ export class GapRepairWorker {
   }
   async runOnce() {
     if (this.busy) return;
+    if (jobRepository.hasActive()) return;
     const gap = await gapRepository.claimNext();
     if (!gap) return;
     this.busy = true;

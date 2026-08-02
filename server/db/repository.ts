@@ -364,6 +364,15 @@ export const jobRepository = {
       .get(id) as SqlRow | undefined;
     return row ? mapJob(row) : null;
   },
+  hasActive() {
+    return Boolean(
+      sqlite.reader
+        .prepare(
+          "SELECT 1 FROM backfill_jobs WHERE status IN ('PENDING','RUNNING','CANCELLING') LIMIT 1",
+        )
+        .get(),
+    );
+  },
   async update(id: string, fields: Record<string, unknown>) {
     const allowed: Record<string, string> = {
       status: "status",

@@ -6,6 +6,22 @@ import type { CandleSource } from "../domain/candle.js";
 
 export class BinanceHttpError extends Error { constructor(public status: number, public code: number | undefined, message: string, public retryAfter?: number) { super(message); } }
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+async function withDeadline<T>(promise: Promise<T>, timeoutMs: number) {
+  let timer: NodeJS.Timeout | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(
+          () => reject(new Error(`Binance request exceeded ${timeoutMs}ms`)),
+          timeoutMs,
+        );
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
 export class BinanceAdapter {
   usedWeight: Record<string, string> = {};
   serverTimeOffsetMs = 0;
@@ -31,7 +47,7 @@ export class BinanceAdapter {
   async ping() { const before = Date.now(); const result = await this.request<{ serverTime: number }>("/fapi/v1/time"); const after = Date.now(); this.serverTimeOffsetMs = result.serverTime - Math.round((before + after) / 2); return result; }
   nowMs() { return Date.now() + this.serverTimeOffsetMs; }
   exchangeInfo() { return this.request<BinanceExchangeInfo>("/fapi/v1/exchangeInfo"); }
-  async fetchKlines(symbol: string, interval: string, startTime?: number, endTime?: number, limit = 1500, source: CandleSource = "REST_BACKFILL") { const rows = await this.request<unknown[][]>("/fapi/v1/klines", { symbol, interval, startTime, endTime, limit }); const receivedAt = new Date(); return rows.map((row) => normalizeRestKline(symbol, interval, row, source, receivedAt)); }
+  async fetchKlines(symbol: string, interval: string, startTime?: number, endTime?: number, limit = 1500, source: CandleSource = "REST_BACKFILL") { const rows = await withDeadline(this.request<unknown[][]>("/fapi/v1/klines", { symbol, interval, startTime, endTime, limit }), 60_000); const receivedAt = new Date(); return rows.map((row) => normalizeRestKline(symbol, interval, row, source, receivedAt)); }
 }
 export interface BinanceExchangeInfo { timezone: string; serverTime: number; rateLimits: unknown[]; symbols: Array<{ symbol: string; status: string; contractType: string; baseAsset: string; quoteAsset: string; marginAsset: string; pricePrecision: number; quantityPrecision: number; filters: Array<Record<string, string>> }> }
 export const binance = new BinanceAdapter();
