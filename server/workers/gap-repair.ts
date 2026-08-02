@@ -101,6 +101,7 @@ export class GapRepairWorker {
         for (const timeframe of config.aggregatedTimeframes) {
           let bucket = bucketOpen(gap.gapStart, timeframe);
           const finalBucket = bucketOpen(gap.gapEnd, timeframe);
+          let scannedBuckets = 0;
           while (bucket <= finalBucket) {
             const existing = candleRepository.range(
               gap.symbol,
@@ -116,6 +117,8 @@ export class GapRepairWorker {
                 bucket,
               );
             bucket = new Date(bucket.getTime() + intervalMs(timeframe));
+            if (++scannedBuckets % 100 === 0)
+              await new Promise<void>((resolve) => setImmediate(resolve));
           }
         }
       }
