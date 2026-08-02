@@ -6,7 +6,7 @@ type ParentConfig =
   | { type: "stop" };
 
 let stopped = false;
-const sockets = new Map<string, WebSocket>();
+let socket: WebSocket | undefined;
 const lastMessageAt = new Map<string, number>();
 const latestCandles = new Map<string, { raw: string; receivedAt: number }>();
 let snapshotServer: Server | undefined;
@@ -15,31 +15,41 @@ function send(message: Record<string, unknown>) {
   if (process.send) process.send(message);
 }
 
-function connect(symbol: string, baseUrl: string) {
+function connect(symbols: string[], baseUrl: string) {
   if (stopped) return;
   const url = new URL(baseUrl);
-  url.searchParams.set("streams", `${symbol.toLowerCase()}@kline_1m`);
-  const socket = new WebSocket(url, { handshakeTimeout: 15_000 });
-  sockets.set(symbol, socket);
-  socket.on("open", () => {
-    lastMessageAt.set(symbol, Date.now());
-    send({ type: "connected", symbol });
+  url.searchParams.set("streams", symbols.map((symbol) => `${symbol.toLowerCase()}@kline_1m`).join("/"));
+  const nextSocket = new WebSocket(url, { handshakeTimeout: 15_000 });
+  socket = nextSocket;
+  nextSocket.on("open", () => {
+    const now = Date.now();
+    for (const symbol of symbols) {
+      lastMessageAt.set(symbol, now);
+      send({ type: "connected", symbol });
+    }
   });
-  socket.on("message", (data) => {
+  nextSocket.on("message", (data) => {
     const receivedAt = Date.now();
     const raw = data.toString();
-    lastMessageAt.set(symbol, receivedAt);
+    try {
+      const payload = JSON.parse(raw) as { data?: { k?: { s?: string } } };
+      const symbol = payload.data?.k?.s;
+      if (!symbol || !symbols.includes(symbol)) return;
+      lastMessageAt.set(symbol, receivedAt);
 
-    // Keep the newest mutable candle here. The parent polls a compact
-    // snapshot, preventing high-rate WebSocket traffic from filling IPC.
-    latestCandles.set(symbol, { raw, receivedAt });
+      // Keep the newest mutable candle here. The parent polls a compact
+      // snapshot, preventing high-rate WebSocket traffic from filling IPC.
+      latestCandles.set(symbol, { raw, receivedAt });
+    } catch {
+      // Invalid frames are rejected in the parent normalizer when surfaced.
+    }
   });
-  socket.on("error", (error) => send({ type: "error", symbol, message: error.message, code: (error as { code?: string }).code }));
-  socket.on("close", (code) => {
-    if (sockets.get(symbol) !== socket) return;
-    sockets.delete(symbol);
-    send({ type: "disconnected", symbol, code });
-    if (!stopped) setTimeout(() => connect(symbol, baseUrl), 1_000);
+  nextSocket.on("error", (error) => send({ type: "error", symbol: symbols.join(","), message: error.message, code: (error as { code?: string }).code }));
+  nextSocket.on("close", (code) => {
+    if (socket !== nextSocket) return;
+    socket = undefined;
+    for (const symbol of symbols) send({ type: "disconnected", symbol, code });
+    if (!stopped) setTimeout(() => connect(symbols, baseUrl), 1_000);
   });
 }
 
@@ -56,17 +66,17 @@ function startSnapshotServer(symbols: string[], baseUrl: string) {
     const address = snapshotServer?.address();
     if (!address || typeof address === "string") return;
     send({ type: "ready", port: address.port });
-    for (const symbol of symbols) connect(symbol, baseUrl);
+    connect(symbols, baseUrl);
   });
 }
 
 const watchdog = setInterval(() => {
   const now = Date.now();
-  for (const [symbol, socket] of sockets) {
-    const last = lastMessageAt.get(symbol) ?? now;
-    if (socket.readyState === WebSocket.OPEN && now - last > 15_000) {
+  for (const [symbol, last] of lastMessageAt) {
+    if (socket?.readyState === WebSocket.OPEN && now - last > 15_000) {
       send({ type: "stale", symbol, idleMs: now - last });
       socket.terminate();
+      break;
     }
   }
 }, 3_000);
@@ -78,7 +88,7 @@ process.on("message", (message: ParentConfig) => {
   if (message.type === "stop") {
     stopped = true;
     clearInterval(watchdog);
-    for (const socket of sockets.values()) socket.terminate();
+    socket?.terminate();
     snapshotServer?.close();
     process.exit(0);
   }
