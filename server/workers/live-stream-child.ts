@@ -6,16 +6,26 @@ let stopped = false;
 const sockets = new Map<string, WebSocket>();
 const lastMessageAt = new Map<string, number>();
 const pendingCandles = new Map<string, { raw: string; receivedAt: number }>();
+const candleInFlight = new Set<string>();
 
 function send(message: Record<string, unknown>) {
   if (process.send) process.send(message);
 }
 
 function flushCandle(symbol: string) {
+  if (candleInFlight.has(symbol)) return;
   const candle = pendingCandles.get(symbol);
   if (!candle) return;
   pendingCandles.delete(symbol);
-  send({ type: "candle", symbol, ...candle });
+  if (!process.send) return;
+  candleInFlight.add(symbol);
+  // Do not enqueue an unbounded series of IPC frames. The callback means the
+  // previous frame has left this process; meanwhile pendingCandles retains
+  // only the most recent mutable state for this symbol.
+  process.send({ type: "candle", symbol, ...candle }, undefined, undefined, () => {
+    candleInFlight.delete(symbol);
+    flushCandle(symbol);
+  });
 }
 
 function connect(symbol: string, baseUrl: string) {
