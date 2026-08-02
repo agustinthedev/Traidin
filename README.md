@@ -1,4 +1,4 @@
-# Traidin Market Data
+# Treidin Market Data
 
 Primera fase de una plataforma local de datos para Binance USD-M Futures. Recibe velas 1m de BTCUSDT y ETHUSDT, mantiene histórico, repara gaps, genera timeframes superiores y expone un dashboard operativo. La persistencia es exclusivamente SQLite; no requiere PostgreSQL, Docker ni servicios de infraestructura.
 

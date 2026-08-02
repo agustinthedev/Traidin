@@ -99,9 +99,9 @@ export default function Dashboard() {
     <main className="terminal-shell">
       <header className="topbar">
         <div className="brand">
-          <span className="brand-mark">T</span>
+          <img className="brand-mark" src="/treidin-mark.png" alt="Treidin" />
           <div>
-            <strong>TRAIDIN</strong>
+            <strong>TREIDIN</strong>
             <small>MARKET DATA / USDⓈ-M</small>
           </div>
         </div>

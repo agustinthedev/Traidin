@@ -7,11 +7,11 @@ import "./settings.css";
 import "./dashboard-theme.css";
 
 export const metadata: Metadata = {
-  title: "Traidin Market Data",
+  title: "Treidin Market Data",
   description: "Auditable Binance USDⓈ-M Futures market data terminal.",
   icons: {
-    icon: "/favicon.svg",
-    shortcut: "/favicon.svg",
+    icon: "/treidin-mark.png",
+    shortcut: "/treidin-mark.png",
   },
 };
 
