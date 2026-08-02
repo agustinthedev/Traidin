@@ -16,7 +16,7 @@ export class BinanceAdapter {
     for (let attempt = 0; ; attempt++) {
       try {
         const response = await new Promise<{ status: number; headers: Record<string, string | string[] | undefined>; body: string }>((resolve, reject) => {
-          const request = get(url, (incoming) => {
+          const request = get(url, { agent: false, headers: { Connection: "close" } }, (incoming) => {
             const chunks: Buffer[] = [];
             incoming.on("data", (chunk: Buffer) => chunks.push(chunk));
             incoming.on("end", () => resolve({ status: incoming.statusCode ?? 0, headers: incoming.headers, body: Buffer.concat(chunks).toString("utf8") }));
