@@ -12,22 +12,23 @@ import { gapService } from "../services/gap-service.js";
 import { binance } from "../binance/adapter.js";
 
 export class LiveIngestionWorker {
-  private child?: ChildProcess; private connectedSymbols = new Set<string>(); private restartTimer?: NodeJS.Timeout; private snapshotTimer?: NodeJS.Timeout; private emitted = new Map<string, number>(); private lastOpenEventAt = new Map<string, number>(); private lastSnapshotAt = new Map<string, number>(); healthy = false;
+  private child?: ChildProcess; private connectedSymbols = new Set<string>(); private restartTimer?: NodeJS.Timeout; private snapshotTimer?: NodeJS.Timeout; private snapshotUrl?: string; private snapshotInFlight = false; private emitted = new Map<string, number>(); private lastOpenEventAt = new Map<string, number>(); private lastSnapshotAt = new Map<string, number>(); healthy = false;
   start() {
     if (this.child) return;
     liveState.init(config.symbols);
     this.startChild();
   }
-  stop() { if (this.restartTimer) clearTimeout(this.restartTimer); if (this.snapshotTimer) clearInterval(this.snapshotTimer); this.restartTimer = undefined; this.snapshotTimer = undefined; this.child?.send({ type: "stop" }); this.child?.kill(); this.child = undefined; this.connectedSymbols.clear(); }
+  stop() { if (this.restartTimer) clearTimeout(this.restartTimer); if (this.snapshotTimer) clearInterval(this.snapshotTimer); this.restartTimer = undefined; this.snapshotTimer = undefined; this.snapshotUrl = undefined; this.child?.send({ type: "stop" }); this.child?.kill(); this.child = undefined; this.connectedSymbols.clear(); }
   private startChild() {
     const childPath = fileURLToPath(new URL("./live-stream-child.ts", import.meta.url));
     const child = fork(childPath, [], { execArgv: ["--import", "tsx"], serialization: "advanced", stdio: ["ignore", "ignore", "ignore", "ipc"] });
     this.child = child;
-    child.on("message", (message: { type: string; symbol?: string; raw?: string; receivedAt?: number; candles?: Array<{ symbol: string; raw: string; receivedAt: number }>; message?: string; code?: string }) => this.onChildMessage(message));
+    child.on("message", (message: { type: string; symbol?: string; raw?: string; receivedAt?: number; port?: number; message?: string; code?: string }) => this.onChildMessage(message));
     child.on("exit", () => {
       if (this.child !== child) return;
       if (this.snapshotTimer) clearInterval(this.snapshotTimer);
       this.snapshotTimer = undefined;
+      this.snapshotUrl = undefined;
       this.child = undefined;
       this.connectedSymbols.clear();
       liveState.websocketConnected = false;
@@ -35,15 +36,9 @@ export class LiveIngestionWorker {
       this.restartTimer = setTimeout(() => this.startChild(), 1_000);
     });
     child.send({ type: "start", symbols: config.symbols, baseUrl: config.BINANCE_WS_URL });
-    this.snapshotTimer = setInterval(() => {
-      if (this.child === child && child.connected) child.send({ type: "snapshot" });
-    }, 1_000);
   }
-  private onChildMessage(message: { type: string; symbol?: string; raw?: string; receivedAt?: number; candles?: Array<{ symbol: string; raw: string; receivedAt: number }>; message?: string; code?: string }) {
-    if (message.type === "snapshot") {
-      for (const candle of message.candles ?? []) this.onSnapshotCandle(candle);
-      return;
-    }
+  private onChildMessage(message: { type: string; symbol?: string; raw?: string; receivedAt?: number; port?: number; message?: string; code?: string }) {
+    if (message.type === "ready" && message.port) return this.onChildReady(message.port);
     const symbol = message.symbol;
     if (!symbol) return;
     if (message.type === "connected") return this.onConnected(symbol);
@@ -53,6 +48,26 @@ export class LiveIngestionWorker {
     if (message.type === "candle" && message.raw && message.receivedAt) {
       try { void this.onCandle(normalizeWsKline(JSON.parse(message.raw), new Date(message.receivedAt))); }
       catch (error) { void eventBus.emit({ level: "ERROR", component: "binance-ws", event: "DATA_VALIDATION_FAILED", message: error instanceof Error ? error.message : "Invalid child payload", symbol, errorCode: "PAYLOAD_INVALID" }); }
+    }
+  }
+  private onChildReady(port: number) {
+    this.snapshotUrl = `http://127.0.0.1:${port}/snapshot`;
+    if (this.snapshotTimer) clearInterval(this.snapshotTimer);
+    this.snapshotTimer = setInterval(() => void this.pollSnapshot(), 500);
+    void this.pollSnapshot();
+  }
+  private async pollSnapshot() {
+    if (!this.snapshotUrl || this.snapshotInFlight) return;
+    this.snapshotInFlight = true;
+    try {
+      const response = await fetch(this.snapshotUrl, { signal: AbortSignal.timeout(400) });
+      if (!response.ok) return;
+      const snapshot = await response.json() as { candles?: Array<{ symbol: string; raw: string; receivedAt: number }> };
+      for (const candle of snapshot.candles ?? []) this.onSnapshotCandle(candle);
+    } catch {
+      // The child exit handler reconnects it; a local poll timeout is transient.
+    } finally {
+      this.snapshotInFlight = false;
     }
   }
   private onSnapshotCandle(message: { symbol: string; raw: string; receivedAt: number }) {

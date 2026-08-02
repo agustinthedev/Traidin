@@ -1,14 +1,15 @@
 import WebSocket from "ws";
+import { createServer, type Server } from "node:http";
 
 type ParentConfig =
   | { type: "start"; symbols: string[]; baseUrl: string }
-  | { type: "snapshot" }
   | { type: "stop" };
 
 let stopped = false;
 const sockets = new Map<string, WebSocket>();
 const lastMessageAt = new Map<string, number>();
 const latestCandles = new Map<string, { raw: string; receivedAt: number }>();
+let snapshotServer: Server | undefined;
 
 function send(message: Record<string, unknown>) {
   if (process.send) process.send(message);
@@ -42,6 +43,23 @@ function connect(symbol: string, baseUrl: string) {
   });
 }
 
+function startSnapshotServer(symbols: string[], baseUrl: string) {
+  snapshotServer = createServer((request, response) => {
+    if (request.url !== "/snapshot") {
+      response.writeHead(404).end();
+      return;
+    }
+    response.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" });
+    response.end(JSON.stringify({ candles: [...latestCandles.entries()].map(([symbol, candle]) => ({ symbol, ...candle })) }));
+  });
+  snapshotServer.listen(0, "127.0.0.1", () => {
+    const address = snapshotServer?.address();
+    if (!address || typeof address === "string") return;
+    send({ type: "ready", port: address.port });
+    for (const symbol of symbols) connect(symbol, baseUrl);
+  });
+}
+
 const watchdog = setInterval(() => {
   const now = Date.now();
   for (const [symbol, socket] of sockets) {
@@ -55,15 +73,13 @@ const watchdog = setInterval(() => {
 
 process.on("message", (message: ParentConfig) => {
   if (message.type === "start") {
-    for (const symbol of message.symbols) connect(symbol, message.baseUrl);
-  }
-  if (message.type === "snapshot") {
-    send({ type: "snapshot", candles: [...latestCandles.entries()].map(([symbol, candle]) => ({ symbol, ...candle })) });
+    startSnapshotServer(message.symbols, message.baseUrl);
   }
   if (message.type === "stop") {
     stopped = true;
     clearInterval(watchdog);
     for (const socket of sockets.values()) socket.terminate();
+    snapshotServer?.close();
     process.exit(0);
   }
 });
