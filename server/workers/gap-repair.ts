@@ -55,19 +55,20 @@ export class GapRepairWorker {
     if (this.busy) return;
     if (jobRepository.hasActive()) return;
     if (this.liveStreamHasPriority()) return;
-    const gap = await gapRepository.claimNext();
-    if (!gap) return;
     this.busy = true;
-    await eventBus.emit({
-      level: "REPAIR",
-      component: "gap-repair",
-      event: "GAP_REPAIR_STARTED",
-      message: "Gap repair started",
-      symbol: gap.symbol,
-      timeframe: gap.timeframe,
-      details: { gapId: gap.id },
-    });
+    let gap: Awaited<ReturnType<typeof gapRepository.claimNext>> = null;
     try {
+      gap = await gapRepository.claimNext();
+      if (!gap) return;
+      await eventBus.emit({
+        level: "REPAIR",
+        component: "gap-repair",
+        event: "GAP_REPAIR_STARTED",
+        message: "Gap repair started",
+        symbol: gap.symbol,
+        timeframe: gap.timeframe,
+        details: { gapId: gap.id },
+      });
       const step = intervalMs(gap.timeframe);
       let cursor = gap.checkpointTime
           ? gap.checkpointTime.getTime() + step
@@ -166,7 +167,7 @@ export class GapRepairWorker {
       });
     } catch (error) {
       this.healthy = false;
-      await gapRepository.update(
+      if (gap) await gapRepository.update(
         gap.id,
         "FAILED",
         error instanceof Error ? error.message : "Unknown error",
@@ -176,8 +177,8 @@ export class GapRepairWorker {
         component: "gap-repair",
         event: "GAP_REPAIR_FAILED",
         message: error instanceof Error ? error.message : "Repair failed",
-        symbol: gap.symbol,
-        timeframe: gap.timeframe,
+        symbol: gap?.symbol,
+        timeframe: gap?.timeframe,
       });
     } finally {
       this.busy = false;

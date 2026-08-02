@@ -490,10 +490,14 @@ export const gapRepository = {
       const statement = db.prepare(
         "INSERT INTO gaps(id,symbol,timeframe,gap_start,gap_end,expected_candles,status,detected_at) VALUES(?,?,?,?,?,?,'DETECTED',?) ON CONFLICT DO NOTHING",
       );
+      const overlapsActiveGap = db.prepare(
+        "SELECT 1 FROM gaps WHERE symbol=? AND timeframe=? AND status IN ('DETECTED','REPAIRING','FAILED') AND gap_start <= ? AND gap_end >= ? LIMIT 1",
+      );
       return db.transaction(() =>
         valid
-          .map((v) =>
-            statement.run(
+          .map((v) => {
+            if (overlapsActiveGap.get(v.symbol, v.timeframe, v.gapEnd.getTime(), v.gapStart.getTime())) return { changes: 0 };
+            return statement.run(
               randomUUID(),
               v.symbol,
               v.timeframe,
@@ -501,8 +505,8 @@ export const gapRepository = {
               v.gapEnd.getTime(),
               v.expectedCandles,
               Date.now(),
-            ),
-          )
+            );
+          })
           .reduce((sum, result) => sum + result.changes, 0),
       )();
     });
