@@ -7,9 +7,9 @@ import type { Candle } from "../domain/candle.js";
 
 export interface StreamHandlers { onCandle(candle: Candle): void | Promise<void>; onConnected(): void | Promise<void>; onDisconnected(reason: string): void | Promise<void>; onStale(): void | Promise<void> }
 export class BinanceKlineStream {
-  private socket?: WebSocket; private stopped = true; private attempt = 0; private generation = 0; private lastMessageAt = 0; private watchdog?: NodeJS.Timeout; private connectTimeout?: NodeJS.Timeout;
+  private socket?: WebSocket; private stopped = true; private attempt = 0; private generation = 0; private lastMessageAt = 0; private watchdog?: NodeJS.Timeout; private connectTimeout?: NodeJS.Timeout; private lastWatchdogAt = 0;
   constructor(private symbols: string[], private interval: string, private handlers: StreamHandlers, private baseUrl = config.BINANCE_WS_URL) {}
-  start() { if (!this.stopped) return; this.stopped = false; this.watchdog = setInterval(() => { if (this.socket?.readyState === WebSocket.OPEN && this.lastMessageAt && Date.now() - this.lastMessageAt > 15_000) { void this.handlers.onStale(); this.replaceStaleSocket(); } }, 3000); this.connect(); }
+  start() { if (!this.stopped) return; this.stopped = false; this.lastWatchdogAt = Date.now(); this.watchdog = setInterval(() => { const now = Date.now(); const watchdogLagMs = Math.max(0, now - this.lastWatchdogAt - 3_000); this.lastWatchdogAt = now; if (this.socket?.readyState === WebSocket.OPEN && this.lastMessageAt && now - this.lastMessageAt > 15_000) { void eventBus.emit({ level: "WARN", component: "binance-ws", event: "WEBSOCKET_STALE", message: "No WebSocket messages within freshness window", durationMs: now - this.lastMessageAt, details: { watchdogLagMs } }); void this.handlers.onStale(); this.replaceStaleSocket(); } }, 3000); this.connect(); }
   stop() { this.stopped = true; this.generation++; if (this.watchdog) clearInterval(this.watchdog); this.socket?.close(1000, "shutdown"); }
   private connect() {
     if (this.stopped) return; const generation = ++this.generation; const url = new URL(this.baseUrl); url.searchParams.set("streams", this.symbols.map((s) => `${s.toLowerCase()}@kline_${this.interval}`).join("/")); const socket = new WebSocket(url); this.socket = socket;
