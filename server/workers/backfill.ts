@@ -66,10 +66,10 @@ export class BackfillWorker {
   }
   async runOnce() {
     if (this.busy) return;
-    const job = await jobRepository.claimNext();
-    if (!job) return;
     this.busy = true;
     try {
+      const job = await jobRepository.claimNext();
+      if (!job) return;
       await this.process(job);
     } finally {
       this.busy = false;
