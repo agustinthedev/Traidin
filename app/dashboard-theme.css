@@ -426,23 +426,50 @@ select:focus-visible {
   box-shadow: none;
 }
 
-.mini-bars {
-  height: 185px;
-  background:
-    linear-gradient(rgba(255, 255, 255, 0.045) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255, 255, 255, 0.025) 1px, transparent 1px),
-    #080808;
-  background-size: 100% 36px, 52px 100%, auto;
+.market-chart-shell {
+  position: relative;
+  height: 245px;
+  overflow: hidden;
+  border-bottom: 1px solid #282828;
+  background: #080808;
 }
 
-.mini-bars i {
-  background: #13253c;
-  border-color: var(--blue);
+.market-chart {
+  position: absolute;
+  inset: 0;
 }
 
-.mini-bars i.hot {
-  background: #0b4b3b;
-  border-color: var(--green);
+.chart-state {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  z-index: 2;
+  color: #686868;
+  background: rgba(8, 8, 8, 0.72);
+  font: 9px var(--mono);
+  letter-spacing: 0.12em;
+  pointer-events: none;
+}
+
+.chart-state.error {
+  color: var(--red);
+}
+
+.chart-attribution {
+  position: absolute;
+  left: 8px;
+  bottom: 5px;
+  z-index: 3;
+  color: #4f4f4f;
+  font: 7px var(--mono);
+  text-decoration: none;
+  letter-spacing: 0.04em;
+  opacity: 0.78;
+}
+
+.chart-attribution:hover {
+  color: #9a9a9a;
 }
 
 .symbol-foot {

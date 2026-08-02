@@ -19,6 +19,7 @@ import {
   Symbols,
 } from "./dashboard/Panels";
 import Settings from "./dashboard/SettingsCompat";
+import CandlestickChart from "./dashboard/CandlestickChart";
 
 const NAV = [
   "Overview",
@@ -322,7 +323,7 @@ function LiveMarket({ status }: { status: AnyRow | null }) {
                 tone="cyan"
               />
             </div>
-            <MiniBars candle={s.openCandle} />
+            <CandlestickChart symbol={s.symbol} liveCandle={s.openCandle} />
             <div className="symbol-foot">
               <span>
                 VOL <b>{fmtNum(s.openCandle?.volume, 3)}</b>
@@ -346,25 +347,6 @@ function LiveMarket({ status }: { status: AnyRow | null }) {
     </>
   );
 }
-function MiniBars({ candle }: { candle?: AnyRow }) {
-  const seed = Number(
-    String(candle?.close ?? "1")
-      .replace(".", "")
-      .slice(-3),
-  );
-  return (
-    <div className="mini-bars" aria-label="Recent activity chart">
-      {Array.from({ length: 42 }, (_, i) => (
-        <i
-          key={i}
-          style={{ height: `${15 + ((seed * (i + 7) + i * 19) % 70)}%` }}
-          className={i > 36 ? "hot" : ""}
-        />
-      ))}
-    </div>
-  );
-}
-
 export function EventConsole({
   events,
   full = false,
