@@ -45,9 +45,10 @@ export async function registerRoutes(app: FastifyInstance) {
       .object({
         timeframe: z.string().default("1m"),
         limit: z.coerce.number().int().min(1).max(1000).default(100),
+        before: date.optional(),
       })
       .parse(request.query);
-    return candleRepository.recent(p.symbol, q.timeframe, q.limit);
+    return candleRepository.recent(p.symbol, q.timeframe, q.limit, q.before);
   });
   app.get("/api/candles", async (request) => {
     const q = z

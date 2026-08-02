@@ -131,13 +131,14 @@ export class CandleRepository {
         ) as SqlRow[]
     ).map(mapCandle);
   }
-  recent(symbol: string, timeframe = "1m", limit = 100) {
+  recent(symbol: string, timeframe = "1m", limit = 100, before?: Date) {
     return (
       sqlite.reader
-        .prepare(
-          "SELECT * FROM candles WHERE symbol=? AND timeframe=? ORDER BY open_time DESC LIMIT ?",
+        .prepare(before
+          ? "SELECT * FROM candles WHERE symbol=? AND timeframe=? AND open_time < ? ORDER BY open_time DESC LIMIT ?"
+          : "SELECT * FROM candles WHERE symbol=? AND timeframe=? ORDER BY open_time DESC LIMIT ?",
         )
-        .all(symbol, timeframe, limit) as SqlRow[]
+        .all(...(before ? [symbol, timeframe, before.getTime(), limit] : [symbol, timeframe, limit])) as SqlRow[]
     ).map(mapCandle);
   }
   latest(symbol: string, timeframe = "1m") {

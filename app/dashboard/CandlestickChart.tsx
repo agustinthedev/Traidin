@@ -36,6 +36,10 @@ export default function CandlestickChart({
   const series = useRef<ISeriesApi<"Candlestick"> | null>(null);
   const fitted = useRef(false);
   const liveCandleRef = useRef(liveCandle);
+  const candlesRef = useRef<CandlestickData<UTCTimestamp>[]>([]);
+  const loadingOlderRef = useRef(false);
+  const hasOlderRef = useRef(true);
+  const loadOlderRef = useRef<() => void>(() => {});
   const [state, setState] = useState<"loading" | "ready" | "error">(
     "loading",
   );
@@ -75,6 +79,10 @@ export default function CandlestickChart({
       handleScroll: true,
       handleScale: true,
     });
+    const onVisibleRangeChange = (range: { from: number; to: number } | null) => {
+      if (range && range.from < 24) loadOlderRef.current();
+    };
+    instance.timeScale().subscribeVisibleLogicalRangeChange(onVisibleRangeChange);
     const candleSeries = instance.addSeries(CandlestickSeries, {
       upColor: "#00d992",
       downColor: "#ff4d5e",
@@ -88,6 +96,7 @@ export default function CandlestickChart({
     chart.current = instance;
     series.current = candleSeries;
     return () => {
+      instance.timeScale().unsubscribeVisibleLogicalRangeChange(onVisibleRangeChange);
       instance.remove();
       chart.current = null;
       series.current = null;
@@ -97,23 +106,37 @@ export default function CandlestickChart({
   useEffect(() => {
     let active = true;
     fitted.current = false;
-    async function load() {
+    candlesRef.current = [];
+    hasOlderRef.current = true;
+    async function load(before?: number) {
       try {
+        const cursor = before
+          ? `&before=${encodeURIComponent(new Date(before * 1000).toISOString())}`
+          : "";
         const rows = (await apiJson(
-          `/api/candles/recent/${symbol}?timeframe=1m&limit=240`,
+          `/api/candles/recent/${symbol}?timeframe=1m&limit=120${cursor}`,
         )) as AnyRow[];
         if (!active || !series.current || !chart.current) return;
-        const candles = rows
+        const page = rows
           .map(chartCandle)
           .filter((value): value is CandlestickData<UTCTimestamp> => !!value)
           .sort((a, b) => Number(a.time) - Number(b.time));
-        series.current.setData(candles);
+        if (before) {
+          const byTime = new Map(candlesRef.current.map((candle) => [candle.time, candle]));
+          for (const candle of page) byTime.set(candle.time, candle);
+          candlesRef.current = [...byTime.values()].sort((a, b) => Number(a.time) - Number(b.time));
+          hasOlderRef.current = page.length === 120;
+        } else {
+          candlesRef.current = page;
+          hasOlderRef.current = page.length === 120;
+        }
+        series.current.setData(candlesRef.current);
         const current = chartCandle(liveCandleRef.current);
         if (current) series.current.update(current);
-        if (!fitted.current && candles.length) {
+        if (!fitted.current && candlesRef.current.length) {
           chart.current.timeScale().setVisibleLogicalRange({
-            from: Math.max(0, candles.length - 90),
-            to: candles.length + 4,
+            from: Math.max(0, candlesRef.current.length - 90),
+            to: candlesRef.current.length + 4,
           });
           fitted.current = true;
         }
@@ -123,9 +146,16 @@ export default function CandlestickChart({
       }
     }
     void load();
+    loadOlderRef.current = () => {
+      const oldest = candlesRef.current[0];
+      if (!oldest || loadingOlderRef.current || !hasOlderRef.current) return;
+      loadingOlderRef.current = true;
+      void load(Number(oldest.time)).finally(() => { loadingOlderRef.current = false; });
+    };
     const refresh = window.setInterval(() => void load(), 60_000);
     return () => {
       active = false;
+      loadOlderRef.current = () => {};
       window.clearInterval(refresh);
     };
   }, [symbol]);
