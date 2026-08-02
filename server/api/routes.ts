@@ -188,7 +188,11 @@ export async function registerRoutes(app: FastifyInstance) {
       sqlite: db.integrity === "ok" ? "HEALTHY" : "UNHEALTHY",
       writer: db.writer.queueDepth < 100 ? "HEALTHY" : "DEGRADED",
       binanceRest: liveState.restHealthy ? "HEALTHY" : "UNHEALTHY",
-      binanceWebSocket: liveState.websocketConnected ? "HEALTHY" : "UNHEALTHY",
+      binanceWebSocket: !liveState.websocketConnected
+        ? "UNHEALTHY"
+        : liveState.websocketFresh()
+          ? "HEALTHY"
+          : "DEGRADED",
       historicalWorker: backfillWorker.healthy ? "HEALTHY" : "DEGRADED",
       gapRepair: gapRepairWorker.healthy ? "HEALTHY" : "DEGRADED",
       aggregation: aggregationEngine.healthy ? "HEALTHY" : "DEGRADED",

@@ -222,8 +222,20 @@ function Overview({
       <div className="metric-grid">
         <Metric
           label="WEBSOCKET"
-          value={status?.websocketConnected ? "CONNECTED" : "OFFLINE"}
-          tone={status?.websocketConnected ? "positive" : "negative"}
+          value={
+            status?.websocketConnected
+              ? status?.websocketFresh
+                ? "CONNECTED"
+                : "STALE"
+              : "OFFLINE"
+          }
+          tone={
+            !status?.websocketConnected
+              ? "negative"
+              : status?.websocketFresh
+                ? "positive"
+                : "warning"
+          }
           detail={`${fmtNum(status?.messages, 0)} messages`}
         />
         <Metric
