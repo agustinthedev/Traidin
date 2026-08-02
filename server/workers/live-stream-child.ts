@@ -9,6 +9,7 @@ let stopped = false;
 let socket: WebSocket | undefined;
 const lastMessageAt = new Map<string, number>();
 const latestCandles = new Map<string, { raw: string; receivedAt: number }>();
+const closedCandles = new Map<string, { raw: string; receivedAt: number }>();
 let snapshotServer: Server | undefined;
 
 function send(message: Record<string, unknown>) {
@@ -32,7 +33,7 @@ function connect(symbols: string[], baseUrl: string) {
     const receivedAt = Date.now();
     const raw = data.toString();
     try {
-      const payload = JSON.parse(raw) as { data?: { k?: { s?: string } } };
+      const payload = JSON.parse(raw) as { data?: { k?: { s?: string; x?: boolean } } };
       const symbol = payload.data?.k?.s;
       if (!symbol || !symbols.includes(symbol)) return;
       lastMessageAt.set(symbol, receivedAt);
@@ -40,6 +41,7 @@ function connect(symbols: string[], baseUrl: string) {
       // Keep the newest mutable candle here. The parent polls a compact
       // snapshot, preventing high-rate WebSocket traffic from filling IPC.
       latestCandles.set(symbol, { raw, receivedAt });
+      if (payload.data?.k?.x) closedCandles.set(symbol, { raw, receivedAt });
     } catch {
       // Invalid frames are rejected in the parent normalizer when surfaced.
     }
@@ -60,7 +62,10 @@ function startSnapshotServer(symbols: string[], baseUrl: string) {
       return;
     }
     response.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" });
-    response.end(JSON.stringify({ candles: [...latestCandles.entries()].map(([symbol, candle]) => ({ symbol, ...candle })) }));
+    response.end(JSON.stringify({
+      candles: [...latestCandles.entries()].map(([symbol, candle]) => ({ symbol, ...candle })),
+      closedCandles: [...closedCandles.entries()].map(([symbol, candle]) => ({ symbol, ...candle })),
+    }));
   });
   snapshotServer.listen(0, "127.0.0.1", () => {
     const address = snapshotServer?.address();

@@ -61,20 +61,21 @@ export class LiveIngestionWorker {
     if (!this.snapshotUrl || this.snapshotInFlight) return;
     this.snapshotInFlight = true;
     try {
-      const snapshot = await new Promise<{ candles?: Array<{ symbol: string; raw: string; receivedAt: number }> }>((resolve, reject) => {
+      const snapshot = await new Promise<{ candles?: Array<{ symbol: string; raw: string; receivedAt: number }>; closedCandles?: Array<{ symbol: string; raw: string; receivedAt: number }> }>((resolve, reject) => {
         const request = get(this.snapshotUrl!, { timeout: 400 }, (response) => {
           if (response.statusCode !== 200) { response.resume(); reject(new Error(`Snapshot HTTP ${response.statusCode}`)); return; }
           let body = "";
           response.setEncoding("utf8");
           response.on("data", (chunk: string) => { body += chunk; });
           response.on("end", () => {
-            try { resolve(JSON.parse(body) as { candles?: Array<{ symbol: string; raw: string; receivedAt: number }> }); }
+            try { resolve(JSON.parse(body) as { candles?: Array<{ symbol: string; raw: string; receivedAt: number }>; closedCandles?: Array<{ symbol: string; raw: string; receivedAt: number }> }); }
             catch (error) { reject(error); }
           });
         });
         request.on("timeout", () => request.destroy(new Error("Snapshot HTTP timeout")));
         request.on("error", reject);
       });
+      for (const candle of snapshot.closedCandles ?? []) this.onSnapshotCandle(candle);
       for (const candle of snapshot.candles ?? []) this.onSnapshotCandle(candle);
     } catch {
       // The child exit handler reconnects it; a local poll timeout is transient.

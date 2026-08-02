@@ -120,6 +120,8 @@ class SQLiteDatabase {
   readonly writerConnection: Database.Database;
   readonly reader: Database.Database;
   readonly writer: SQLiteWriter;
+  private integrity = "unknown";
+  private integrityCheckedAt = 0;
   constructor() {
     mkdirSync(dirname(this.path), { recursive: true });
     this.writerConnection = new Database(this.path);
@@ -132,6 +134,11 @@ class SQLiteDatabase {
     this.reader.pragma("busy_timeout = 5000");
     this.reader.pragma("foreign_keys = ON");
     this.writer = new SQLiteWriter(this.writerConnection);
+    this.refreshIntegrity();
+  }
+  private refreshIntegrity() {
+    this.integrity = String(this.reader.pragma("quick_check", { simple: true }));
+    this.integrityCheckedAt = Date.now();
   }
   private applyPragmas(db: Database.Database) {
     db.pragma("journal_mode = WAL");
@@ -171,6 +178,9 @@ class SQLiteDatabase {
     }
   }
   stats() {
+    // quick_check scans the database and can take seconds on a large local
+    // history. Dashboard polling must not block live ingestion for it.
+    if (Date.now() - this.integrityCheckedAt >= 300_000) this.refreshIntegrity();
     const db = statSync(this.path);
     const walPath = `${this.path}-wal`;
     let walBytes = 0;
@@ -190,7 +200,7 @@ class SQLiteDatabase {
       busyTimeout: this.writerConnection.pragma("busy_timeout", {
         simple: true,
       }),
-      integrity: this.reader.pragma("quick_check", { simple: true }),
+      integrity: this.integrity,
       writer: { ...this.writer.metrics },
     };
   }
