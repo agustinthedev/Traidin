@@ -92,7 +92,9 @@ export default function Dashboard() {
   const activeJobs = jobs.filter((j) =>
     ["PENDING", "RUNNING", "CANCELLING"].includes(j.status),
   ).length;
-  const activeGaps = gaps.filter((g) => g.status !== "REPAIRED").length;
+  const activeGaps = gaps.filter((g) =>
+    ["DETECTED", "REPAIRING"].includes(g.status),
+  ).length;
   return (
     <main className="terminal-shell">
       <header className="topbar">

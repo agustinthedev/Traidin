@@ -392,6 +392,7 @@ export function Quality({
                 <th>MISSING</th>
                 <th>PROGRESS</th>
                 <th>STATUS</th>
+                <th>ACTIONS</th>
                 <th>DETECTED</th>
               </tr>
             </thead>
@@ -426,6 +427,19 @@ export function Quality({
                     >
                       {g.status}
                     </span>
+                  </td>
+                  <td className="actions">
+                    {g.status === "FAILED" && (
+                      <button
+                        className="job-action retry"
+                        onClick={async () => {
+                          await apiJson("/api/gaps/repair", { method: "POST" });
+                          await refresh();
+                        }}
+                      >
+                        RETRY
+                      </button>
+                    )}
                   </td>
                   <td>{fmtDate(g.detectedAt)}</td>
                 </tr>
