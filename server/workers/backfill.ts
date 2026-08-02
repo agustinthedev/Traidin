@@ -8,6 +8,7 @@ import { aggregationEngine } from "./aggregation.js";
 
 export class BackfillWorker {
   private timer?: NodeJS.Timeout;
+  private watchdogTimer?: NodeJS.Timeout;
   private busy = false;
   healthy = true;
   async create(input: {
@@ -44,10 +45,24 @@ export class BackfillWorker {
   async start() {
     await jobRepository.recoverInterrupted();
     this.timer = setInterval(() => void this.runOnce(), 750);
+    this.watchdogTimer = setInterval(() => void this.watchdog(), 15_000);
     void this.runOnce();
   }
   stop() {
     if (this.timer) clearInterval(this.timer);
+    if (this.watchdogTimer) clearInterval(this.watchdogTimer);
+  }
+  private async watchdog() {
+    const failed = await jobRepository.failStalled(120_000);
+    if (!failed) return;
+    this.healthy = false;
+    await eventBus.emit({
+      level: "ERROR",
+      component: "backfill",
+      event: "BACKFILL_STALLED",
+      message: `${failed} backfill job(s) stopped after no checkpoint progress`,
+      errorCode: "BACKFILL_STALLED",
+    });
   }
   async runOnce() {
     if (this.busy) return;
@@ -105,7 +120,7 @@ export class BackfillWorker {
           });
           return;
         }
-        if (current.status === "PAUSED") return;
+        if (current.status !== "RUNNING") return;
         const requestEnd = Math.min(target, cursor + (1500 - 1) * step);
         const batch = (
           await binance.fetchKlines(

@@ -64,7 +64,7 @@ async function start() {
   }
   if (config.START_WORKERS === "true") {
     aggregationEngine.start();
-    gapRepairWorker.start();
+    await gapRepairWorker.start();
     await backfillWorker.start();
     liveIngestionWorker.start();
   }

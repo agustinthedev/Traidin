@@ -429,6 +429,16 @@ export const jobRepository = {
           .run(Date.now()).changes,
     );
   },
+  async failStalled(timeoutMs: number) {
+    const cutoff = Date.now() - timeoutMs;
+    return sqlite.writer.enqueue(4, "job-stall-watchdog", (db) =>
+      db
+        .prepare(
+          "UPDATE backfill_jobs SET status='FAILED',completed_at=?,error_code='BACKFILL_STALLED',error_message='No checkpoint progress within the watchdog window',updated_at=? WHERE status IN ('RUNNING','CANCELLING') AND updated_at < ?",
+        )
+        .run(Date.now(), Date.now(), cutoff).changes,
+    );
+  },
 };
 
 const mapGap = (r: SqlRow) => ({
@@ -446,6 +456,11 @@ const mapGap = (r: SqlRow) => ({
   repairedAt: r.repaired_at == null ? null : date(r.repaired_at),
   repairJobId: r.repair_job_id,
   errorMessage: r.error_message,
+  downloadedCandles: Number(r.downloaded_candles ?? 0),
+  persistedCandles: Number(r.persisted_candles ?? 0),
+  requestCount: Number(r.request_count ?? 0),
+  checkpointTime: r.checkpoint_time == null ? null : date(r.checkpoint_time),
+  updatedAt: r.updated_at == null ? null : date(r.updated_at),
 });
 export const gapRepository = {
   async createMany(
@@ -490,16 +505,59 @@ export const gapRepository = {
   },
   async update(
     id: string,
-    status: "REPAIRING" | "REPAIRED" | "FAILED",
+    status: "DETECTED" | "REPAIRING" | "REPAIRED" | "FAILED",
     errorMessage?: string,
   ) {
     const now = Date.now();
     await sqlite.writer.enqueue(2, "gap-update", (db) =>
       db
         .prepare(
-          "UPDATE gaps SET status=?,repair_started_at=CASE WHEN ?='REPAIRING' THEN ? ELSE repair_started_at END,repaired_at=CASE WHEN ?='REPAIRED' THEN ? ELSE repaired_at END,error_message=? WHERE id=?",
+          "UPDATE gaps SET status=?,repair_started_at=CASE WHEN ?='REPAIRING' THEN ? ELSE repair_started_at END,repaired_at=CASE WHEN ?='REPAIRED' THEN ? ELSE repaired_at END,error_message=?,updated_at=? WHERE id=?",
         )
-        .run(status, status, now, status, now, errorMessage ?? null, id),
+        .run(status, status, now, status, now, errorMessage ?? null, now, id),
+    );
+  },
+  async updateProgress(
+    id: string,
+    fields: {
+      downloadedCandles: number;
+      persistedCandles: number;
+      requestCount: number;
+      checkpointTime: Date;
+    },
+  ) {
+    await sqlite.writer.enqueue(2, "gap-progress", (db) =>
+      db
+        .prepare(
+          "UPDATE gaps SET downloaded_candles=?,persisted_candles=?,request_count=?,checkpoint_time=?,updated_at=? WHERE id=?",
+        )
+        .run(
+          fields.downloadedCandles,
+          fields.persistedCandles,
+          fields.requestCount,
+          fields.checkpointTime.getTime(),
+          Date.now(),
+          id,
+        ),
+    );
+  },
+  async recoverInterrupted() {
+    return sqlite.writer.enqueue(2, "gap-recover", (db) =>
+      db
+        .prepare(
+          "UPDATE gaps SET status='DETECTED',error_message='Recovered after process restart',updated_at=? WHERE status='REPAIRING'",
+        )
+        .run(Date.now()).changes,
+    );
+  },
+  async failStalled(timeoutMs: number) {
+    const now = Date.now();
+    return sqlite.writer.enqueue(2, "gap-stall-watchdog", (db) =>
+      db
+        .prepare(
+          "UPDATE gaps SET status='FAILED',error_message='No repair checkpoint progress within the watchdog window',updated_at=? WHERE status='REPAIRING' AND updated_at < ?",
+        )
+        .run(now, now - timeoutMs).changes,
     );
   },
   async claimNext() {

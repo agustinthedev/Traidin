@@ -390,18 +390,34 @@ export function Quality({
                 <th>START</th>
                 <th>END</th>
                 <th>MISSING</th>
+                <th>PROGRESS</th>
                 <th>STATUS</th>
                 <th>DETECTED</th>
               </tr>
             </thead>
             <tbody>
-              {gaps.map((g) => (
+              {gaps.map((g) => {
+                const progress =
+                  g.status === "REPAIRED"
+                    ? 100
+                    : g.expectedCandles
+                      ? Math.min(100, (g.persistedCandles / g.expectedCandles) * 100)
+                      : 0;
+                return (
                 <tr key={g.id}>
                   <td>{g.symbol}</td>
                   <td>{g.timeframe}</td>
                   <td>{fmtDate(g.gapStart)}</td>
                   <td>{fmtDate(g.gapEnd)}</td>
                   <td>{g.expectedCandles}</td>
+                  <td className="gap-progress">
+                    <div className="progress">
+                      <i style={{ width: `${progress}%` }} />
+                    </div>
+                    <small>
+                      {fmtNum(g.persistedCandles, 0)} / {fmtNum(g.expectedCandles, 0)} ({progress.toFixed(1)}%)
+                    </small>
+                  </td>
                   <td>
                     <span
                       className={`tag ${g.status === "REPAIRED" ? "ok" : "warn"}`}
@@ -411,7 +427,8 @@ export function Quality({
                   </td>
                   <td>{fmtDate(g.detectedAt)}</td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </div>

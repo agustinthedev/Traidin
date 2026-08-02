@@ -7,14 +7,30 @@ import { bucketOpen, intervalMs } from "../domain/intervals.js";
 import { aggregationEngine } from "./aggregation.js";
 export class GapRepairWorker {
   private timer?: NodeJS.Timeout;
+  private watchdogTimer?: NodeJS.Timeout;
   private busy = false;
   healthy = true;
-  start() {
+  async start() {
+    await gapRepository.recoverInterrupted();
     this.timer = setInterval(() => void this.runOnce(), 1000);
+    this.watchdogTimer = setInterval(() => void this.watchdog(), 15_000);
     void this.runOnce();
   }
   stop() {
     if (this.timer) clearInterval(this.timer);
+    if (this.watchdogTimer) clearInterval(this.watchdogTimer);
+  }
+  private async watchdog() {
+    const failed = await gapRepository.failStalled(120_000);
+    if (!failed) return;
+    this.healthy = false;
+    await eventBus.emit({
+      level: "ERROR",
+      component: "gap-repair",
+      event: "GAP_REPAIR_STALLED",
+      message: `${failed} gap repair(s) stopped after no checkpoint progress`,
+      errorCode: "GAP_REPAIR_STALLED",
+    });
   }
   async runOnce() {
     if (this.busy) return;
@@ -32,8 +48,12 @@ export class GapRepairWorker {
     });
     try {
       const step = intervalMs(gap.timeframe);
-      let cursor = gap.gapStart.getTime(),
-        total = 0;
+      let cursor = gap.checkpointTime
+          ? gap.checkpointTime.getTime() + step
+          : gap.gapStart.getTime(),
+        total = gap.persistedCandles,
+        downloaded = gap.downloadedCandles,
+        requests = gap.requestCount;
       while (cursor <= gap.gapEnd.getTime()) {
         const end = Math.min(gap.gapEnd.getTime(), cursor + 1499 * step);
         const batch = await binance.fetchKlines(
@@ -44,10 +64,19 @@ export class GapRepairWorker {
           1500,
           "REST_GAP_REPAIR",
         );
+        requests++;
+        downloaded += batch.length;
         if (!batch.length) break;
         const write = await candleRepository.upsertMany(batch, 2);
         total += write.rowsAffected;
-        cursor = batch.at(-1)!.openTime.getTime() + step;
+        const checkpoint = batch.at(-1)!.openTime;
+        cursor = checkpoint.getTime() + step;
+        await gapRepository.updateProgress(gap.id, {
+          downloadedCandles: downloaded,
+          persistedCandles: total,
+          requestCount: requests,
+          checkpointTime: checkpoint,
+        });
         await new Promise<void>((resolve) => setImmediate(resolve));
       }
       await gapRepository.update(gap.id, "REPAIRED");
