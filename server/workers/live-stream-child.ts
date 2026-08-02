@@ -13,8 +13,7 @@ function send(message: Record<string, unknown>) {
 function connect(symbol: string, baseUrl: string) {
   if (stopped) return;
   const url = new URL(baseUrl);
-  url.pathname = "/ws/" + `${symbol.toLowerCase()}@kline_1m`;
-  url.search = "";
+  url.searchParams.set("streams", `${symbol.toLowerCase()}@kline_1m`);
   const socket = new WebSocket(url, { handshakeTimeout: 15_000 });
   sockets.set(symbol, socket);
   socket.on("open", () => {
