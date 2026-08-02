@@ -200,6 +200,10 @@ function Overview({
 }) {
   const db = status?.database;
   const symbols = status?.symbols ?? [];
+  const activeGapCount = gaps.filter((g) =>
+    ["DETECTED", "REPAIRING"].includes(g.status),
+  ).length;
+  const failedGapCount = gaps.filter((g) => g.status === "FAILED").length;
   return (
     <>
       <PageHead
@@ -239,11 +243,11 @@ function Overview({
         />
         <Metric
           label="ACTIVE GAPS"
-          value={gaps.filter((g) => g.status !== "REPAIRED").length}
+          value={activeGapCount}
           tone={
-            gaps.some((g) => g.status !== "REPAIRED") ? "warning" : "positive"
+            activeGapCount > 0 ? "warning" : "positive"
           }
-          detail={`${fmtNum(status?.repairedGaps, 0)} repaired`}
+          detail={`${failedGapCount} failed / ${fmtNum(status?.repairedGaps, 0)} repaired`}
         />
         <Metric
           label="ACTIVE JOBS"
