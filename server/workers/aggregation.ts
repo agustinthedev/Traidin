@@ -13,13 +13,12 @@ export class AggregationEngine {
   healthy = true;
   start() {
     if (this.reconciliationTimer) return;
-    if (liveState.websocketFresh()) void this.reconcileIncomplete().catch(() => {});
     this.reconciliationTimer = setInterval(
       () => {
         if (liveState.websocketFresh())
-          void this.reconcileIncomplete().catch(() => {});
+          void this.reconcileIncomplete(10, true).catch(() => {});
       },
-      30_000,
+      300_000,
     );
   }
   stop() {
@@ -61,13 +60,15 @@ export class AggregationEngine {
     });
     return result;
   }
-  async reconcileIncomplete(limit = 250) {
+  async reconcileIncomplete(limit = 250, protectLive = false) {
     if (this.reconciling) return 0;
     if (jobRepository.hasActive()) return 0;
     this.reconciling = true;
     let rebuilt = 0;
     try {
+      let scanned = 0;
       for (const candidate of candleRepository.incompleteAggregates(limit)) {
+        if (protectLive && !liveState.websocketFresh()) break;
         const expectedMinutes = intervalMs(candidate.timeframe) / 60_000;
         const end = new Date(
           candidate.openTime.getTime() +
@@ -92,6 +93,8 @@ export class AggregationEngine {
           candidate.openTime,
         );
         if (result?.candle.isComplete) rebuilt++;
+        if (++scanned % 5 === 0)
+          await new Promise<void>((resolve) => setImmediate(resolve));
       }
       this.healthy = true;
       if (rebuilt)
