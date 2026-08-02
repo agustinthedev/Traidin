@@ -266,19 +266,30 @@ export function Backfills({
                   <td>{fmtTime(j.updatedAt)}</td>
                   <td className="actions">
                     {j.status === "RUNNING" && (
-                      <>
-                        <button onClick={() => void action(j.id, "pause")}>
+                      <div className="job-actions">
+                        <button
+                          className="job-action pause"
+                          onClick={() => void action(j.id, "pause")}
+                        >
                           PAUSE
                         </button>
-                        <button onClick={() => void action(j.id, "cancel")}>
+                        <button
+                          className="job-action cancel"
+                          onClick={() => void action(j.id, "cancel")}
+                        >
                           CANCEL
                         </button>
-                      </>
+                      </div>
                     )}
                     {["FAILED", "PAUSED", "CANCELLED"].includes(j.status) && (
-                      <button onClick={() => void action(j.id, "retry")}>
-                        RETRY
-                      </button>
+                      <div className="job-actions">
+                        <button
+                          className="job-action retry"
+                          onClick={() => void action(j.id, "retry")}
+                        >
+                          RETRY
+                        </button>
+                      </div>
                     )}
                   </td>
                 </tr>

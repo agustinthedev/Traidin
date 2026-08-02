@@ -472,6 +472,68 @@ select:focus-visible {
   color: #9a9a9a;
 }
 
+td.actions {
+  min-width: 164px;
+  padding: 5px 10px;
+}
+
+.job-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.actions .job-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 68px;
+  height: 27px;
+  margin: 0;
+  padding: 0 9px;
+  border: 1px solid #3a3a3a;
+  background: #121212;
+  color: #bdbdbd;
+  font: 700 8px var(--mono);
+  letter-spacing: 0.1em;
+  transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
+}
+
+.actions .job-action:hover {
+  background: #1a1a1a;
+  color: #fff;
+}
+
+.actions .job-action.pause {
+  border-color: #705318;
+  color: #ffc65a;
+}
+
+.actions .job-action.pause:hover {
+  border-color: #c28a22;
+  background: #302208;
+}
+
+.actions .job-action.cancel {
+  border-color: #6a2831;
+  color: #ff8590;
+}
+
+.actions .job-action.cancel:hover {
+  border-color: #c94050;
+  background: #321015;
+}
+
+.actions .job-action.retry {
+  border-color: #1b5db5;
+  color: #8dbbff;
+}
+
+.actions .job-action.retry:hover {
+  border-color: #3d86e8;
+  background: #0c2b56;
+}
+
 .symbol-foot {
   border-top-color: #282828;
   background: #0b0b0b;
