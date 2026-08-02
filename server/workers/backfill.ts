@@ -142,8 +142,19 @@ export class BackfillWorker {
           });
           continue;
         }
-        const write = await candleRepository.upsertMany(batch, 5);
-        persisted += write.rowsAffected;
+        let rowsAffected = 0;
+        let writeDurationMs = 0;
+        const commitSize = Math.min(config.SQLITE_BATCH_SIZE, 250);
+        for (let offset = 0; offset < batch.length; offset += commitSize) {
+          const write = await candleRepository.upsertMany(
+            batch.slice(offset, offset + commitSize),
+            5,
+          );
+          rowsAffected += write.rowsAffected;
+          writeDurationMs += write.durationMs;
+          await new Promise<void>((resolve) => setImmediate(resolve));
+        }
+        persisted += rowsAffected;
         const last = batch.at(-1)!.openTime;
         cursor = last.getTime() + step;
         await jobRepository.update(initial.id, {
@@ -160,8 +171,8 @@ export class BackfillWorker {
           symbol: initial.symbol,
           timeframe: initial.timeframe,
           jobId: initial.id,
-          durationMs: Math.round(write.durationMs),
-          rowsAffected: write.rowsAffected,
+          durationMs: Math.round(writeDurationMs),
+          rowsAffected,
           queueDepth: 0,
           details: {
             downloaded,
@@ -170,7 +181,6 @@ export class BackfillWorker {
             checkpoint: last.toISOString(),
           },
         });
-        await new Promise<void>((resolve) => setImmediate(resolve));
       }
       await gapService.scan(
         initial.symbol,

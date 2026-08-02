@@ -1,7 +1,7 @@
 import type { Candle } from "../domain/candle.js";
 import { aggregateCandles } from "../domain/aggregate.js";
 import { bucketOpen, intervalMs } from "../domain/intervals.js";
-import { candleRepository } from "../db/repository.js";
+import { candleRepository, jobRepository } from "../db/repository.js";
 import { config } from "../config.js";
 import { eventBus } from "../events/bus.js";
 import { gapService } from "../services/gap-service.js";
@@ -60,6 +60,7 @@ export class AggregationEngine {
   }
   async reconcileIncomplete(limit = 250) {
     if (this.reconciling) return 0;
+    if (jobRepository.hasActive()) return 0;
     this.reconciling = true;
     let rebuilt = 0;
     try {
