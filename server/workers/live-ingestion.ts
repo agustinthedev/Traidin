@@ -10,14 +10,26 @@ import { gapService } from "../services/gap-service.js";
 import { binance } from "../binance/adapter.js";
 
 export class LiveIngestionWorker {
-  private stream?: BinanceKlineStream; private emitted = new Map<string, number>(); private lastOpenEventAt = new Map<string, number>(); healthy = false;
-  start() { liveState.init(config.symbols); this.stream = new BinanceKlineStream(config.symbols, "1m", { onCandle: (c) => this.onCandle(c), onConnected: () => this.onConnected(), onDisconnected: (reason) => this.onDisconnected(reason), onStale: () => this.onStale() }); this.stream.start(); }
-  stop() { this.stream?.stop(); }
-  private onConnected() {
-    liveState.websocketConnected = true;
-    this.healthy = true;
-    for (const state of liveState.symbols.values()) state.state = "HEALTHY";
-    setTimeout(() => void this.verifyContinuity(), 5_000);
+  private streams: BinanceKlineStream[] = []; private connectedSymbols = new Set<string>(); private emitted = new Map<string, number>(); private lastOpenEventAt = new Map<string, number>(); healthy = false;
+  start() {
+    liveState.init(config.symbols);
+    this.streams = config.symbols.map((symbol) => new BinanceKlineStream([symbol], "1m", {
+      onCandle: (candle) => this.onCandle(candle),
+      onConnected: () => this.onConnected(symbol),
+      onDisconnected: (reason) => this.onDisconnected(symbol, reason),
+      onStale: () => this.onStale(symbol),
+    }));
+    for (const stream of this.streams) stream.start();
+  }
+  stop() { for (const stream of this.streams) stream.stop(); this.streams = []; this.connectedSymbols.clear(); }
+  private onConnected(symbol: string) {
+    this.connectedSymbols.add(symbol);
+    liveState.websocketConnected = this.connectedSymbols.size > 0;
+    const state = liveState.symbols.get(symbol);
+    if (state) state.state = "HEALTHY";
+    this.healthy = liveState.websocketFresh();
+    if (this.connectedSymbols.size === config.symbols.length)
+      setTimeout(() => void this.verifyContinuity(), 5_000);
   }
   private async verifyContinuity() {
     if (!liveState.websocketFresh()) return;
@@ -34,8 +46,8 @@ export class LiveIngestionWorker {
         );
     }
   }
-  private onDisconnected(reason: string) { void reason; liveState.websocketConnected = false; this.healthy = false; for (const state of liveState.symbols.values()) state.state = "DISCONNECTED"; }
-  private async onStale() { this.healthy = false; for (const state of liveState.symbols.values()) state.state = "STALE"; await eventBus.emit({ level: "WARN", component: "live-ingestion", event: "STREAM_STALE", message: "No market messages for 15 seconds" }); }
+  private onDisconnected(symbol: string, reason: string) { void reason; this.connectedSymbols.delete(symbol); liveState.websocketConnected = this.connectedSymbols.size > 0; this.healthy = false; const state = liveState.symbols.get(symbol); if (state) state.state = "DISCONNECTED"; }
+  private async onStale(symbol: string) { this.healthy = false; const state = liveState.symbols.get(symbol); if (state) state.state = "STALE"; await eventBus.emit({ level: "WARN", component: "live-ingestion", event: "STREAM_STALE", message: `${symbol} has not received market messages for 15 seconds`, symbol }); }
   private async onCandle(candle: Candle) {
     wsMessages.inc(); liveState.messages++; const latency = Math.max(0, candle.receivedAt.getTime() + binance.serverTimeOffsetMs - (candle.eventTime?.getTime() ?? candle.receivedAt.getTime() + binance.serverTimeOffsetMs)); ingestLatency.observe(latency); const state = liveState.symbols.get(candle.symbol); if (!state) return;
     state.openCandle = candle.isClosed ? undefined : candle; state.lastMessageAt = candle.receivedAt.toISOString(); state.latencyMs = latency;
