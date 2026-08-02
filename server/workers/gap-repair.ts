@@ -59,7 +59,10 @@ export class GapRepairWorker {
     let gap: Awaited<ReturnType<typeof gapRepository.claimNext>> = null;
     try {
       gap = await gapRepository.claimNext();
-      if (!gap) return;
+      if (!gap) {
+        this.healthy = true;
+        return;
+      }
       await eventBus.emit({
         level: "REPAIR",
         component: "gap-repair",
@@ -156,6 +159,7 @@ export class GapRepairWorker {
         }
       }
       liveState.repairedGaps++;
+      this.healthy = true;
       await eventBus.emit({
         level: "REPAIR",
         component: "gap-repair",
