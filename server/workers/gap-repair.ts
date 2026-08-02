@@ -9,10 +9,11 @@ export class GapRepairWorker {
   private timer?: NodeJS.Timeout;
   private watchdogTimer?: NodeJS.Timeout;
   private busy = false;
+  private liveFreshSince = 0;
   healthy = true;
   async start() {
     await gapRepository.recoverInterrupted();
-    this.timer = setInterval(() => void this.runOnce(), 1000);
+    this.timer = setInterval(() => void this.runOnce(), 5_000);
     this.watchdogTimer = setInterval(() => void this.watchdog(), 15_000);
     void this.runOnce();
   }
@@ -39,10 +40,21 @@ export class GapRepairWorker {
       "Deferred to protect the live WebSocket stream",
     );
   }
+  private liveStreamHasPriority() {
+    if (!liveState.websocketFresh()) {
+      this.liveFreshSince = 0;
+      return true;
+    }
+    if (!this.liveFreshSince) {
+      this.liveFreshSince = Date.now();
+      return true;
+    }
+    return Date.now() - this.liveFreshSince < 30_000;
+  }
   async runOnce() {
     if (this.busy) return;
     if (jobRepository.hasActive()) return;
-    if (!liveState.websocketFresh()) return;
+    if (this.liveStreamHasPriority()) return;
     const gap = await gapRepository.claimNext();
     if (!gap) return;
     this.busy = true;
