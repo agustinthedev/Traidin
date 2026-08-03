@@ -63,6 +63,13 @@ describe("point-in-time multi-timeframe safety", () => {
     const at = frame.at(-1)!.closeTime;
     expect(evaluateCondition({ type: "group", operator: "AND", children: [{ left: { type: "indicator", indicator: "ema", parameters: { period: 5 }, timeframe: "1m" }, operator: ">", right: { type: "constant", value: 100 } }, { type: "group", operator: "OR", children: [{ left: { type: "indicator", indicator: "rsi", parameters: { period: 14 }, timeframe: "1m" }, operator: ">", right: { type: "constant", value: 50 } }] }] }, engine, at).passed).toBe(true);
   });
+  it("keeps a 15m trigger from reading an open 1h confirmation candle", () => {
+    const hourly = [candle(Date.UTC(2026, 0, 1, 0), { timeframe: "1h", closeTime: new Date(Date.UTC(2026, 0, 1, 0, 59, 59, 999)), close: "100" }), candle(Date.UTC(2026, 0, 1, 1), { timeframe: "1h", closeTime: new Date(Date.UTC(2026, 0, 1, 1, 59, 59, 999)), close: "200" })];
+    const trigger = [candle(Date.UTC(2026, 0, 1, 0, 45), { timeframe: "15m", closeTime: new Date(Date.UTC(2026, 0, 1, 1, 0)), close: "1" })];
+    const source = { verificationRange: (_symbol: string, timeframe: string) => timeframe === "1h" ? hourly : trigger }, engine = new FeatureEngine("BTCUSDT", trigger[0].openTime, trigger[0].closeTime, source as any).load(["15m", "1h"]);
+    expect(engine.getLatestClosedCandle("1h", new Date(Date.UTC(2026, 0, 1, 1, 15)))?.close).toBe("100");
+    expect(engine.getLatestClosedCandle("1h", new Date(Date.UTC(2026, 0, 1, 2)))?.close).toBe("200");
+  });
 });
 describe("strategy configuration validation", () => {
   it("derives maximum pre-run warm-up per required timeframe", () => {
@@ -93,6 +100,22 @@ describe("strategy configuration validation", () => {
   });
 });
 describe("historical execution", () => {
+  it("evaluates a 15m trigger and fills on the next 1m open", async () => {
+    const trigger = [candle(Date.UTC(2026, 0, 1, 0, 0), { timeframe: "15m", closeTime: new Date(Date.UTC(2026, 0, 1, 0, 15)), open: "100", high: "101", low: "99", close: "100" }), candle(Date.UTC(2026, 0, 1, 0, 15), { timeframe: "15m", closeTime: new Date(Date.UTC(2026, 0, 1, 0, 30)), open: "100", high: "103", low: "99", close: "102" })];
+    const lower = [candle(Date.UTC(2026, 0, 1, 0, 16), { timeframe: "1m", closeTime: new Date(Date.UTC(2026, 0, 1, 0, 17)), open: "101", high: "102", low: "100", close: "101" }), candle(Date.UTC(2026, 0, 1, 0, 17), { timeframe: "1m", closeTime: new Date(Date.UTC(2026, 0, 1, 0, 18)), open: "101", high: "102", low: "100", close: "101" })];
+    const source = { verificationRange: (_symbol: string, timeframe: string) => timeframe === "15m" ? trigger : lower }, engine = new FeatureEngine("BTCUSDT", trigger[0].openTime, trigger.at(-1)!.closeTime, source as any).load(["15m", "1m"]);
+    const config = strategyConfigSchema.parse({ exchange: "BINANCE", market: "BINANCE_USDM_FUTURES", symbols: ["BTCUSDT"], triggerTimeframe: "15m", executionTimeframe: "1m", requiredTimeframes: ["15m", "1m"], directions: "LONG_ONLY", longEntry: { left: { type: "constant", value: 1 }, operator: "==", right: { type: "constant", value: 1 } }, stop: { type: "PERCENTAGE", percentage: 50 }, takeProfit: { type: "NONE" }, sizing: { type: "FIXED_NOTIONAL", notional: 100 }, leverage: { fixed: 1, maximum: 1 }, costs: { fillModel: "NEXT_OPEN", makerFeePct: 0, takerFeePct: 0, slippageBps: 0, fundingMode: "NONE", sameBarPolicy: "WORST_CASE" } });
+    const result = await simulate(config, engine, 1000);
+    expect(result.trades[0].entryTime).toBe(Date.UTC(2026, 0, 1, 0, 16));
+  });
+  it("caps notional at configured leverage without multiplying fees again", async () => {
+    const candles = [candle(Date.UTC(2026, 0, 1), { timeframe: "1m", closeTime: new Date(Date.UTC(2026, 0, 1, 0, 1)), open: "100", high: "100", low: "100", close: "100" }), candle(Date.UTC(2026, 0, 1, 0, 1), { timeframe: "1m", closeTime: new Date(Date.UTC(2026, 0, 1, 0, 2)), open: "100", high: "100", low: "100", close: "100" })];
+    const source = { verificationRange: () => candles }, engine = new FeatureEngine("BTCUSDT", candles[0].openTime, candles.at(-1)!.closeTime, source as any).load(["1m"]);
+    const config = strategyConfigSchema.parse({ exchange: "BINANCE", market: "BINANCE_USDM_FUTURES", symbols: ["BTCUSDT"], triggerTimeframe: "1m", executionTimeframe: "1m", requiredTimeframes: ["1m"], directions: "LONG_ONLY", longEntry: { left: { type: "constant", value: 1 }, operator: "==", right: { type: "constant", value: 1 } }, stop: { type: "PERCENTAGE", percentage: 1 }, takeProfit: { type: "NONE" }, sizing: { type: "FIXED_RISK", riskPct: 100 }, leverage: { fixed: 2, maximum: 2 }, costs: { fillModel: "CLOSE", makerFeePct: .02, takerFeePct: .04, slippageBps: 0, fundingMode: "NONE" } });
+    const result = await simulate(config, engine, 1000);
+    expect(Number(result.trades[0].details.entryNotional)).toBeLessThanOrEqual(2000);
+    expect(Number(result.trades[0].details.entryFee)).toBeCloseTo(Number(result.trades[0].details.entryNotional) * .0004);
+  });
   it("reports risk-adjusted ratios, streaks and holding statistics from closed balance", () => {
     const trades = [{ side: "LONG", entryTime: 0, exitTime: 3_600_000, entryPrice: "100", exitPrice: "110", quantity: "1", grossPnl: "10", netPnl: "10", fees: "1", returnPct: 10, rMultiple: 1, maePct: -1, mfePct: 12, holdingMs: 3_600_000, entryReason: "CANDLE_CLOSED", exitReason: "TAKE_PROFIT", details: { funding: "1", slippageImpact: "2" } }, { side: "SHORT", entryTime: 7_200_000, exitTime: 10_800_000, entryPrice: "100", exitPrice: "110", quantity: "1", grossPnl: "-10", netPnl: "-10", fees: "1", returnPct: -10, rMultiple: -1, maePct: -12, mfePct: 1, holdingMs: 3_600_000, entryReason: "CANDLE_CLOSED", exitReason: "STOP_LOSS", details: { funding: "-0.5", slippageImpact: "3" } }] as any;
     const metrics = verificationMetrics(trades, [{ time: 0, balance: 100 }, { time: 3_600_000, balance: 110 }, { time: 10_800_000, balance: 100 }]);
@@ -120,6 +143,13 @@ describe("historical execution", () => {
     const candles = [candle(Date.UTC(2026, 0, 1), { open: "100", high: "101", low: "99", close: "100" })]; const source = { verificationRange: () => candles }; const engine = new FeatureEngine("BTCUSDT", candles[0].openTime, candles[0].closeTime, source as any).load(["1m"]);
     const config = strategyConfigSchema.parse({ exchange: "BINANCE", market: "BINANCE_USDM_FUTURES", symbols: ["BTCUSDT"], triggerTimeframe: "1m", executionTimeframe: "1m", requiredTimeframes: ["1m"], directions: "LONG_ONLY", longEntry: { left: { type: "constant", value: 1 }, operator: "==", right: { type: "constant", value: 1 } }, stop: { type: "PERCENTAGE", percentage: 1 }, takeProfit: { type: "NONE" }, sizing: { type: "FIXED_NOTIONAL", notional: 10 }, leverage: { fixed: 1, maximum: 1 }, costs: { fillModel: "CLOSE", makerFeePct: 0, takerFeePct: 0, slippageBps: 0, fundingMode: "NONE", sameBarPolicy: "WORST_CASE" } });
     const result = await simulate(config, engine, 1000, undefined, undefined, { tickSize: ".1", stepSize: ".01", minNotional: "100" }); expect(result.trades).toHaveLength(0); expect(result.funnel.exchangeRejected).toBe(1);
+  });
+  it("rounds fill prices up and quantities down before charging fees", async () => {
+    const candles = [candle(Date.UTC(2026, 0, 1), { open: "100.03", high: "100.03", low: "100.03", close: "100.03" }), candle(Date.UTC(2026, 0, 1, 0, 1), { open: "100.03", high: "100.03", low: "100.03", close: "100.03" })]; const source = { verificationRange: () => candles }; const engine = new FeatureEngine("BTCUSDT", candles[0].openTime, candles.at(-1)!.closeTime, source as any).load(["1m"]);
+    const config = strategyConfigSchema.parse({ exchange: "BINANCE", market: "BINANCE_USDM_FUTURES", symbols: ["BTCUSDT"], triggerTimeframe: "1m", executionTimeframe: "1m", requiredTimeframes: ["1m"], directions: "LONG_ONLY", longEntry: { left: { type: "constant", value: 1 }, operator: "==", right: { type: "constant", value: 1 } }, stop: { type: "PERCENTAGE", percentage: 1 }, takeProfit: { type: "NONE" }, sizing: { type: "FIXED_NOTIONAL", notional: 100 }, leverage: { fixed: 1, maximum: 1 }, costs: { fillModel: "CLOSE", makerFeePct: .02, takerFeePct: .04, slippageBps: 0, fundingMode: "NONE" } });
+    const result = await simulate(config, engine, 1000, undefined, undefined, { tickSize: ".1", stepSize: ".01" });
+    expect(result.trades[0]).toMatchObject({ entryPrice: "100.1", quantity: "0.99" });
+    expect(Number(result.trades[0].details.entryNotional)).toBeCloseTo(99.099);
   });
   it("rejects an entry whose configured reward does not meet the minimum R/R", async () => {
     const candles = [candle(Date.UTC(2026, 0, 1), { open: "100", high: "101", low: "99", close: "100" })]; const source = { verificationRange: () => candles }; const engine = new FeatureEngine("BTCUSDT", candles[0].openTime, candles[0].closeTime, source as any).load(["1m"]);

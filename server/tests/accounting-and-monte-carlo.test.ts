@@ -5,6 +5,7 @@ import { monteCarlo } from "../strategy/monte-carlo.js";
 import { selectWalkForwardCandidate } from "../strategy/walk-forward.js";
 import { auditTradeFees } from "../strategy/fee-audit.js";
 import { equityChartDomain } from "../strategy/chart-domain.js";
+import { compareVerificationRuns } from "../strategy/comparability.js";
 import type { SimTrade } from "../strategy/simulation.js";
 
 const trade = (grossPnl: number, fees: number, fundingPnl: number, netRMultiple: number): SimTrade => ({
@@ -27,10 +28,12 @@ describe("verification accounting and Monte Carlo", () => {
   });
 
   it("records ruin and never emits negative equity or drawdown below -100%", () => {
-    const result = monteCarlo([trade(-200, 0, 0, -20)], 100, 20, 42, fixedRiskConfig);
+    const result = monteCarlo([trade(-100, 0, 0, -10), trade(-100, 0, 0, -10)], 100, 20, 42, fixedRiskConfig);
     expect(result.ruinedPathCount).toBe(20);
     expect(result.ruinProbabilityPct).toBe(100);
     expect(result.paths.flat().every((value) => value >= 0)).toBe(true);
+    expect(result.paths.every((path) => path.slice(1).every((value) => value === 0))).toBe(true);
+    expect(Object.values(result.percentilePaths).flat().every((value) => value >= 0)).toBe(true);
     expect([result.p05MaxDrawdownPct, result.medianMaxDrawdownPct, result.p95MaxDrawdownPct].every((value) => value >= -100 && value <= 0)).toBe(true);
   });
 
@@ -41,6 +44,16 @@ describe("verification accounting and Monte Carlo", () => {
     ]);
     expect(result.selected).toBeNull();
     expect(result.candidates.map((candidate) => candidate.eligibility.reasons.length)).toEqual([1, 1]);
+  });
+
+  it("selects the best eligible walk-forward candidate without treating rejected folds as zeros", () => {
+    const result = selectWalkForwardCandidate([
+      { periodMultiplier: .8, metrics: { tradeCount: 31, netProfit: 50, profitFactor: 1.1, maxDrawdownPct: -10 } },
+      { periodMultiplier: 1.2, metrics: { tradeCount: 40, netProfit: 100, profitFactor: 1.3, maxDrawdownPct: -15 } },
+      { periodMultiplier: 1, metrics: { tradeCount: 2, netProfit: 0, profitFactor: null, maxDrawdownPct: 0 } },
+    ]);
+    expect(result.selected?.periodMultiplier).toBe(1.2);
+    expect(result.candidates.find((candidate) => candidate.periodMultiplier === 1)?.eligibility.eligible).toBe(false);
   });
 
   it("reconciles maker/taker fees from fill notional without leverage double counting", () => {
@@ -60,15 +73,24 @@ describe("verification accounting and Monte Carlo", () => {
     expect(result.status).toBe("PASS");
     expect(result.feeDifference).toBeCloseTo(0);
     expect(result.effectiveFeeRate).toBeGreaterThan(0);
+    expect(result.rateConversions).toMatchObject({ makerRateDecimal: .0002, takerRateDecimal: .0005 });
   });
 
   it("reconstructs partial exit fills and percentage rates without leverage multiplication", () => {
-    const partial = { ...trade(1, 0.144, 0, 1), entryPrice: "100", exitPrice: "110", quantity: "2", fees: "0.144", details: { entryFee: "0.10", exitFee: "0.044", entryFeeType: "TAKER", exitFeeType: "MAKER", entryFeeRatePct: 0.05, exitFeeRatePct: 0.02, exitFills: [{ price: 105, quantity: 1 }, { price: 115, quantity: 1 }] } } as SimTrade;
+    const partial = { ...trade(1, 0.144, 0, 1), entryPrice: "100", exitPrice: "110", quantity: "2", fees: "0.144", details: { entryFee: "0.10", exitFee: "0.044", entryFeeType: "TAKER", exitFeeType: "MAKER", entryFeeRatePct: 0.05, exitFeeRatePct: 0.02, exitFills: [{ price: 105, quantity: 1, feeType: "MAKER" }, { price: 115, quantity: 1, feeType: "MAKER" }] } } as SimTrade;
     const result = auditTradeFees([partial], { makerFeePct: .02, takerFeePct: .05 });
     expect(result.status).toBe("PASS");
     expect(result.totalEntryNotional).toBe(200);
     expect(result.totalExitNotional).toBe(220);
     expect(result.reconstructedFees).toBeCloseTo(.144);
+    expect(result.makerFees).toBeCloseTo(.044);
+  });
+
+  it("accepts a small exchange rounding difference as a warning", () => {
+    const rounded = { ...trade(1, .1, 0, 1), fees: ".10005", details: { entryFee: ".05", exitFee: ".05" } } as SimTrade;
+    const result = auditTradeFees([rounded], { makerFeePct: .02, takerFeePct: .05 });
+    expect(result.status).toBe("WARNING");
+    expect(result.rows[0].status).toBe("WARNING");
   });
 
   it("exposes explicit ruin statistics and the fixed-risk Monte Carlo model", () => {
@@ -85,5 +107,12 @@ describe("verification accounting and Monte Carlo", () => {
     expect(equityChartDomain([0, 0]).min).toBe(0);
     expect(equityChartDomain([.0001, .0002]).min).toBe(0);
     expect(equityChartDomain([-20, 100], true).min).toBeLessThan(0);
+  });
+
+  it("classifies verification comparisons by reproducibility dimensions", () => {
+    const run = { symbol: "BTCUSDT", market: "BINANCE_USDM_FUTURES", requestedStart: new Date(1), requestedEnd: new Date(2), actualStart: null, actualEnd: null, strategyVersionId: "v1", configurationHash: "hash", randomSeed: 42, options: { initialBalance: 10_000 }, dataFingerprint: { checksum: "a" }, engineVersion: "sim", metricsVersion: "met", monteCarloEngineVersion: "mc", walkForwardEngineVersion: "wf", robustnessEngineVersion: "rob", stressEngineVersion: "stress", exportVersion: "exp", reportEngineVersion: "rep" };
+    expect(compareVerificationRuns(run, run, fixedRiskConfig, fixedRiskConfig).status).toBe("EXACTLY_COMPARABLE");
+    expect(compareVerificationRuns(run, { ...run, randomSeed: 43 }, fixedRiskConfig, fixedRiskConfig).status).toBe("COMPARABLE_WITH_DIFFERENCES");
+    expect(compareVerificationRuns(run, { ...run, symbol: "ETHUSDT" }, fixedRiskConfig, fixedRiskConfig).status).toBe("NOT_DIRECTLY_COMPARABLE");
   });
 });
