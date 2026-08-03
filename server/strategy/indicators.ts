@@ -1,11 +1,89 @@
 import type { Candle } from "../domain/candle.js";
 
-export const INDICATOR_REGISTRY_VERSION = "2026.08.core.2";
+export const INDICATOR_REGISTRY_VERSION = "2026.09.semantic.1";
 export type IndicatorParameter = { type: "integer" | "number"; default: number; min: number; max: number };
-export type IndicatorDefinition = { id: string; name: string; category: string; description: string; requiredFields: string[]; parameters: Record<string, IndicatorParameter>; warmupBars: (parameters: Record<string, unknown>) => number; outputs: string[]; visualization: "overlay" | "subpanel"; pointInTimeSafe: true; supportedTimeframes: string[] };
+export type IndicatorSemanticType = "PRICE_LEVEL" | "PRICE_DISTANCE" | "PRICE_PERCENTAGE" | "BOUNDED_OSCILLATOR" | "UNBOUNDED_OSCILLATOR" | "NON_NEGATIVE_MAGNITUDE" | "SIGNED_DIRECTIONAL_VALUE" | "RATIO" | "PERCENTAGE" | "BOOLEAN" | "CATEGORICAL_DIRECTION" | "CUMULATIVE_SERIES" | "COUNT" | "VOLUME_LEVEL" | "VOLATILITY_LEVEL" | "NORMALIZED_Z_SCORE" | "CALENDAR_CATEGORY";
+export type IndicatorRole = "ENTRY_TRIGGER" | "DIRECTIONAL_FILTER" | "TREND_FILTER" | "VOLATILITY_FILTER" | "VOLUME_CONFIRMATION" | "REGIME_FILTER" | "EXIT_INPUT" | "STOP_DISTANCE_INPUT" | "SIZING_INPUT";
+export type IndicatorOperator = ">" | ">=" | "<" | "<=" | "==" | "!=" | "crosses_above" | "crosses_below" | "is_true" | "is_false" | "between" | "outside";
+export type IndicatorOutputSemantics = {
+  semanticType: IndicatorSemanticType;
+  min?: number;
+  max?: number;
+  canBeNegative: boolean;
+  priceScaled: boolean;
+  percentageScaled: boolean;
+  ratioScaled: boolean;
+  directional: boolean;
+  categorical: boolean;
+  discrete: boolean;
+  validOperators: IndicatorOperator[];
+  validOperands: ("CONSTANT" | "PRICE_LEVEL" | "COMPATIBLE_SERIES" | "SAME_OUTPUT")[];
+  roles: IndicatorRole[];
+};
+export type IndicatorParameterConstraint = { name: string; description: string; validate: (parameters: Record<string, unknown>) => string | null };
+export type IndicatorDefinition = { id: string; name: string; category: string; description: string; requiredFields: string[]; parameters: Record<string, IndicatorParameter>; parameterConstraints: IndicatorParameterConstraint[]; warmupBars: (parameters: Record<string, unknown>) => number; outputs: string[]; outputMetadata: Record<string, IndicatorOutputSemantics>; visualization: "overlay" | "subpanel"; pointInTimeSafe: true; supportedTimeframes: string[]; roles: IndicatorRole[]; templates: string[]; normalization: "NONE" | "PRICE" | "PERCENTAGE" | "RATIO" | "ZSCORE" | "EVENT" };
 const frames = ["1m", "5m", "15m", "1h", "4h", "1d", "1w"];
-const period = (defaultValue = 14): Record<string, IndicatorParameter> => ({ period: { type: "integer", default: defaultValue, min: 2, max: 500 } });
-const definition = (id: string, name: string, category: string, fields: string[], outputs: string[], visualization: "overlay" | "subpanel", parameters = period(), warmup = (p: Record<string, unknown>) => Number(p.period ?? 14)): IndicatorDefinition => ({ id, name, category, description: `${name}, calculated only from closed candles available at the evaluation timestamp.`, requiredFields: fields, parameters, warmupBars: warmup, outputs, visualization, pointInTimeSafe: true, supportedTimeframes: frames });
+const period = (defaultValue = 14, max = 300): Record<string, IndicatorParameter> => ({ period: { type: "integer", default: defaultValue, min: 2, max } });
+
+const operators = (semanticType: IndicatorSemanticType): IndicatorOperator[] => {
+  if (["BOOLEAN"].includes(semanticType)) return ["is_true", "is_false", "==", "!="];
+  if (["CATEGORICAL_DIRECTION", "CALENDAR_CATEGORY"].includes(semanticType)) return ["==", "!=", "crosses_above", "crosses_below", "between", "outside"];
+  if (["PRICE_LEVEL"].includes(semanticType)) return [">", ">=", "<", "<=", "crosses_above", "crosses_below", "==", "between", "outside"];
+  if (["NON_NEGATIVE_MAGNITUDE", "VOLUME_LEVEL", "VOLATILITY_LEVEL", "COUNT"].includes(semanticType)) return [">", ">=", "crosses_above", "crosses_below", "between", "outside"];
+  if (["CUMULATIVE_SERIES"].includes(semanticType)) return ["crosses_above", "crosses_below", ">", "<", "between", "outside"];
+  return [">", ">=", "<", "<=", "crosses_above", "crosses_below", "==", "between", "outside"];
+};
+const semantic = (semanticType: IndicatorSemanticType, options: Partial<IndicatorOutputSemantics> = {}): IndicatorOutputSemantics => ({
+  semanticType,
+  canBeNegative: !["PRICE_LEVEL", "NON_NEGATIVE_MAGNITUDE", "VOLUME_LEVEL", "VOLATILITY_LEVEL", "COUNT", "RATIO", "PERCENTAGE", "BOOLEAN", "CALENDAR_CATEGORY"].includes(semanticType),
+  priceScaled: semanticType === "PRICE_LEVEL" || semanticType === "PRICE_DISTANCE",
+  percentageScaled: semanticType === "PRICE_PERCENTAGE" || semanticType === "PERCENTAGE",
+  ratioScaled: semanticType === "RATIO",
+  directional: ["SIGNED_DIRECTIONAL_VALUE", "CATEGORICAL_DIRECTION"].includes(semanticType),
+  categorical: ["BOOLEAN", "CATEGORICAL_DIRECTION", "CALENDAR_CATEGORY"].includes(semanticType),
+  discrete: ["BOOLEAN", "CATEGORICAL_DIRECTION", "COUNT", "CALENDAR_CATEGORY"].includes(semanticType),
+  validOperators: operators(semanticType),
+  validOperands: semanticType === "PRICE_LEVEL" ? ["CONSTANT", "PRICE_LEVEL", "COMPATIBLE_SERIES"] : ["CONSTANT", "COMPATIBLE_SERIES", "SAME_OUTPUT"],
+  roles: ["ENTRY_TRIGGER", "DIRECTIONAL_FILTER"],
+  ...options,
+});
+
+const outputSemantics = (id: string, output: string): IndicatorOutputSemantics => {
+  if (output === "direction") return semantic("CATEGORICAL_DIRECTION", { min: -1, max: 1, roles: ["ENTRY_TRIGGER", "DIRECTIONAL_FILTER", "TREND_FILTER"] });
+  if (output === "adx") return semantic("NON_NEGATIVE_MAGNITUDE", { min: 0, roles: ["TREND_FILTER", "REGIME_FILTER"] });
+  if (["plus_di", "minus_di"].includes(output)) return semantic("BOUNDED_OSCILLATOR", { min: 0, max: 100, directional: true, roles: ["ENTRY_TRIGGER", "DIRECTIONAL_FILTER", "TREND_FILTER"] });
+  if (["macd", "signal", "histogram"].includes(output)) return semantic("SIGNED_DIRECTIONAL_VALUE", { roles: ["ENTRY_TRIGGER", "DIRECTIONAL_FILTER", "TREND_FILTER"] });
+  if (output === "percent_b") return semantic("RATIO", { roles: ["ENTRY_TRIGGER", "DIRECTIONAL_FILTER", "REGIME_FILTER"] });
+  if (output === "width") return semantic("RATIO", { min: 0, roles: ["VOLATILITY_FILTER", "REGIME_FILTER"] });
+  if (["sma", "ema", "wma", "vwma", "supertrend", "middle", "upper", "lower", "highest_high", "lowest_low", "donchian", "swing_high", "swing_low"].includes(output) || ["sma", "ema", "wma", "vwma", "supertrend", "bollinger", "keltner", "highest_high", "lowest_low", "donchian", "swing_high", "swing_low"].includes(id)) return semantic("PRICE_LEVEL", { roles: ["ENTRY_TRIGGER", "DIRECTIONAL_FILTER", "TREND_FILTER", "EXIT_INPUT", "STOP_DISTANCE_INPUT"] });
+  if (["rsi", "stochastic_k", "stochastic_rsi", "mfi"].includes(output)) return semantic("BOUNDED_OSCILLATOR", { min: 0, max: 100, directional: true, roles: ["ENTRY_TRIGGER", "DIRECTIONAL_FILTER", "REGIME_FILTER"] });
+  if (output === "williams_r") return semantic("BOUNDED_OSCILLATOR", { min: -100, max: 0, canBeNegative: true, directional: true, roles: ["ENTRY_TRIGGER", "DIRECTIONAL_FILTER", "REGIME_FILTER"] });
+  if (["percentile_rank", "volatility_percentile"].includes(output)) return semantic("BOUNDED_OSCILLATOR", { min: 0, max: 100, roles: ["DIRECTIONAL_FILTER", "VOLATILITY_FILTER", "REGIME_FILTER"] });
+  if (output === "choppiness") return semantic("BOUNDED_OSCILLATOR", { min: 0, max: 100, roles: ["REGIME_FILTER", "VOLATILITY_FILTER"] });
+  if (["body_to_range", "close_position", "taker_buy_ratio", "taker_sell_ratio"].includes(output)) return semantic(output === "body_to_range" || output === "close_position" ? "RATIO" : "RATIO", { min: 0, max: 1, roles: ["DIRECTIONAL_FILTER", "VOLUME_CONFIRMATION", "ENTRY_TRIGGER"] });
+  if (["relative_volume", "relative_quote_volume", "relative_trade_count"].includes(output)) return semantic("RATIO", { min: 0, roles: ["VOLUME_CONFIRMATION", "REGIME_FILTER"] });
+  if (["volume_zscore", "quote_volume_zscore", "trade_count_zscore", "delta_zscore", "return_zscore", "price_zscore"].includes(output)) return semantic("NORMALIZED_Z_SCORE", { canBeNegative: true, directional: true, roles: ["ENTRY_TRIGGER", "DIRECTIONAL_FILTER", "REGIME_FILTER"] });
+  if (["atr", "true_range", "stddev", "historical_volatility", "range", "upper_wick", "lower_wick", "body_size", "average_trade_size", "average_trade_notional", "volume_sma", "quote_volume_sma", "consecutive_buyer_dominant", "consecutive_seller_dominant"].includes(output)) return semantic(output.includes("volume") || output.includes("trade") ? "VOLUME_LEVEL" : "NON_NEGATIVE_MAGNITUDE", { roles: ["VOLATILITY_FILTER", "VOLUME_CONFIRMATION", "STOP_DISTANCE_INPUT", "SIZING_INPUT"] });
+  if (output === "atr_percent") return semantic("PRICE_PERCENTAGE", { min: 0, roles: ["VOLATILITY_FILTER", "STOP_DISTANCE_INPUT", "SIZING_INPUT"] });
+  if (["breakout_up", "breakout_down", "inside_bar", "outside_bar", "is_weekend", "is_month_start", "is_month_end"].includes(output)) return semantic("BOOLEAN", { min: 0, max: 1, directional: true, roles: ["ENTRY_TRIGGER", "REGIME_FILTER", "DIRECTIONAL_FILTER"] });
+  if (["hour_utc", "day_of_week", "month_of_year", "quarter_of_year", "week_of_year"].includes(output)) return semantic("CALENDAR_CATEGORY", { min: output === "hour_utc" ? 0 : output === "day_of_week" ? 0 : 1, max: output === "hour_utc" ? 23 : output === "day_of_week" ? 6 : output === "month_of_year" ? 12 : output === "quarter_of_year" ? 4 : 53, roles: ["REGIME_FILTER", "ENTRY_TRIGGER"] });
+  if (output === "bars_since_breakout") return semantic("COUNT", { min: 0, roles: ["REGIME_FILTER", "ENTRY_TRIGGER"] });
+  if (["obv", "adl", "vpt", "cvd"].includes(output)) return semantic("CUMULATIVE_SERIES", { directional: true, roles: ["DIRECTIONAL_FILTER", "VOLUME_CONFIRMATION", "REGIME_FILTER"] });
+  if (["distance_pct", "extension_atr", "ma_slope_pct", "return", "log_return", "mean_return", "median_return", "cci", "roc", "slope", "momentum", "cmf", "relative_base_delta", "base_volume_delta", "quote_volume_delta", "relative_quote_delta", "delta_ema", "autocorrelation", "drawdown"].includes(output)) return semantic("SIGNED_DIRECTIONAL_VALUE", { roles: ["ENTRY_TRIGGER", "DIRECTIONAL_FILTER", "REGIME_FILTER"] });
+  return semantic("UNBOUNDED_OSCILLATOR");
+};
+const roleFor = (outputs: string[]) => [...new Set(outputs.flatMap((output) => outputSemantics("", output).roles))];
+const constraintsFor = (id: string): IndicatorParameterConstraint[] => {
+  const constraints: IndicatorParameterConstraint[] = [];
+  if (id === "macd") constraints.push({ name: "fast_lt_slow", description: "MACD fast period must be lower than slow period", validate: (p) => Number(p.fast) < Number(p.slow) ? null : "fast period must be lower than slow period" });
+  if (id === "moving_average_alignment") constraints.push({ name: "ordered_periods", description: "Moving-average periods must be fast < medium < slow", validate: (p) => Number(p.fast) < Number(p.medium) && Number(p.medium) < Number(p.slow) ? null : "periods must satisfy fast < medium < slow" });
+  if (id === "bollinger") constraints.push({ name: "sensible_deviations", description: "Bollinger deviations must stay between 1 and 4", validate: (p) => Number(p.deviations) >= 1 && Number(p.deviations) <= 4 ? null : "deviations must be between 1 and 4" });
+  return constraints;
+};
+const definition = (id: string, name: string, category: string, fields: string[], outputs: string[], visualization: "overlay" | "subpanel", parameters = period(), warmup = (p: Record<string, unknown>) => Number(p.period ?? 14)): IndicatorDefinition => {
+  const outputMetadata = Object.fromEntries(outputs.map((output) => [output, outputSemantics(id, output)]));
+  return { id, name, category, description: `${name}, calculated only from closed candles available at the evaluation timestamp.`, requiredFields: fields, parameters, parameterConstraints: constraintsFor(id), warmupBars: warmup, outputs, outputMetadata, visualization, pointInTimeSafe: true, supportedTimeframes: frames, roles: roleFor(outputs), templates: [], normalization: outputMetadata[outputs[0]]?.semanticType === "PRICE_LEVEL" ? "PRICE" : outputMetadata[outputs[0]]?.semanticType === "NORMALIZED_Z_SCORE" ? "ZSCORE" : outputMetadata[outputs[0]]?.semanticType === "RATIO" ? "RATIO" : outputMetadata[outputs[0]]?.semanticType === "BOOLEAN" ? "EVENT" : "NONE" };
+};
 
 export const indicatorRegistry: Record<string, IndicatorDefinition> = Object.fromEntries([
   definition("sma", "Simple Moving Average", "trend", ["close"], ["sma"], "overlay"),
@@ -101,6 +179,50 @@ export const indicatorRegistry: Record<string, IndicatorDefinition> = Object.fro
   definition("is_month_end", "Month End UTC", "calendar", [], ["is_month_end"], "subpanel", {} as Record<string, IndicatorParameter>, () => 0),
 ].map((d) => [d.id, d]));
 
+// Parameter ranges are deliberately indicator-specific. This prevents a generic
+// 2..500 sampler from creating warm-up-heavy or semantically meaningless rules.
+const parameterOverrides: Record<string, Record<string, IndicatorParameter>> = {
+  macd: { fast: { type: "integer", default: 12, min: 2, max: 100 }, slow: { type: "integer", default: 26, min: 5, max: 300 }, signal: { type: "integer", default: 9, min: 2, max: 50 } }, supertrend: { period: { type: "integer", default: 10, min: 2, max: 100 }, multiple: { type: "number", default: 3, min: .5, max: 8 } },
+  rsi: period(14, 50), stochastic: period(14, 50), stochastic_rsi: { rsiPeriod: { type: "integer", default: 14, min: 2, max: 50 }, period: { type: "integer", default: 14, min: 2, max: 50 } }, williams_r: period(14, 50), cci: period(20, 100), roc: period(12, 100), momentum: period(10, 100),
+  adx: period(14, 100), atr: period(14, 100), atr_percent: period(14, 100), true_range: {}, bollinger: { period: { type: "integer", default: 20, min: 2, max: 100 }, deviations: { type: "number", default: 2, min: 0.1, max: 4 } }, keltner: { period: { type: "integer", default: 20, min: 2, max: 100 }, atrPeriod: { type: "integer", default: 10, min: 2, max: 100 }, multiple: { type: "number", default: 2, min: .1, max: 8 } }, choppiness_index: period(14, 100), rolling_stddev: period(20, 100), historical_volatility: period(20, 100), volatility_percentile: { period: { type: "integer", default: 20, min: 5, max: 100 }, rankPeriod: { type: "integer", default: 100, min: 20, max: 250 } },
+  volume_sma: period(20, 100), relative_volume: period(20, 100), volume_zscore: period(20, 100), quote_volume_sma: period(20, 100), relative_quote_volume: period(20, 100), quote_volume_zscore: period(20, 100), relative_trade_count: period(20, 100), trade_count_zscore: period(20, 100), delta_ema: period(20, 100), delta_zscore: period(20, 100), taker_buy_ratio_ema: period(20, 100),
+  moving_average_slope: { period: { type: "integer", default: 20, min: 5, max: 100 }, slopePeriod: { type: "integer", default: 5, min: 2, max: 30 } }, moving_average_alignment: { fast: { type: "integer", default: 20, min: 3, max: 80 }, medium: { type: "integer", default: 50, min: 10, max: 150 }, slow: { type: "integer", default: 200, min: 30, max: 300 } }, price_distance_ma: period(20, 100),
+  highest_high: period(20, 100), lowest_low: period(20, 100), donchian: period(20, 100), donchian_breakout: period(20, 100), breakout_age: period(20, 100), distance_to_recent_high: period(20, 100), distance_to_recent_low: period(20, 100), swing_high: period(14, 50), swing_low: period(14, 50), price_extension_atr: { emaPeriod: { type: "integer", default: 20, min: 5, max: 100 }, atrPeriod: { type: "integer", default: 14, min: 5, max: 100 } },
+  rolling_mean_return: period(20, 100), rolling_median_return: period(20, 100), return_zscore: period(20, 100), percentile_rank: period(50, 250), rolling_skewness: period(30, 150), rolling_kurtosis: period(30, 150), rolling_autocorrelation: period(30, 150), price_zscore: period(20, 100), rolling_drawdown: period(20, 100),
+};
+for (const [id, parameters] of Object.entries(parameterOverrides)) if (indicatorRegistry[id]) indicatorRegistry[id].parameters = parameters;
+
+export function indicatorOutputSemantics(indicator: string, output?: string): IndicatorOutputSemantics {
+  const definition = indicatorRegistry[indicator];
+  if (!definition) throw new Error(`Unknown indicator: ${indicator}`);
+  const selected = output ?? definition.outputs[0];
+  const semantics = definition.outputMetadata[selected];
+  if (!semantics) throw new Error(`${indicator} has no output ${selected}`);
+  return semantics;
+}
+
+export function validateIndicatorRegistry(registry: Record<string, IndicatorDefinition> = indicatorRegistry): string[] {
+  const errors: string[] = [];
+  for (const [id, definition] of Object.entries(registry)) {
+    if (definition.id !== id) errors.push(`${id}: stable id does not match registry key`);
+    if (!definition.outputs.length) errors.push(`${id}: at least one output is required`);
+    if (!definition.outputMetadata || definition.outputs.some((output) => !definition.outputMetadata[output])) errors.push(`${id}: every output requires semantic metadata`);
+    for (const [name, parameter] of Object.entries(definition.parameters)) {
+      if (!Number.isFinite(parameter.min) || !Number.isFinite(parameter.max) || parameter.min > parameter.max || parameter.default < parameter.min || parameter.default > parameter.max) errors.push(`${id}.${name}: invalid parameter range`);
+      if (parameter.type === "integer" && !Number.isInteger(parameter.default)) errors.push(`${id}.${name}: integer default is not an integer`);
+    }
+    for (const output of definition.outputs) {
+      const metadata = definition.outputMetadata[output];
+      if (metadata && metadata.semanticType === "BOUNDED_OSCILLATOR" && (metadata.min == null || metadata.max == null)) errors.push(`${id}.${output}: bounded output requires min/max`);
+      if (metadata && !metadata.validOperators.length) errors.push(`${id}.${output}: valid operators are required`);
+    }
+  }
+  return errors;
+}
+
+const registryErrors = validateIndicatorRegistry();
+if (registryErrors.length) throw new Error(`Invalid indicator registry: ${registryErrors.join("; ")}`);
+
 export type FeatureSeries = Record<string, Float64Array>;
 const n = (v: string) => Number(v);
 const nan = (length: number) => new Float64Array(Array.from({ length }, () => Number.NaN));
@@ -121,7 +243,19 @@ function median(values: number[]) { const ordered = [...values].sort((a, b) => a
 function returns(values: Float64Array) { return Float64Array.from(values, (x, i) => i ? x / values[i - 1] - 1 : NaN); }
 function rollingRank(values: Float64Array, p: number) { return rolling(values, p, (slice) => { const value = slice.at(-1)!; return slice.filter((x) => x <= value).length / slice.length * 100; }); }
 
-export function validateIndicator(id: string, parameters: Record<string, unknown> = {}) { const item = indicatorRegistry[id]; if (!item) throw new Error(`Unknown indicator: ${id}`); for (const [name, schema] of Object.entries(item.parameters)) { const value = Number(parameters[name] ?? schema.default); if (!Number.isFinite(value) || value < schema.min || value > schema.max || (schema.type === "integer" && !Number.isInteger(value))) throw new Error(`${id}.${name} must be a ${schema.type} between ${schema.min} and ${schema.max}`); } return item; }
+export function validateIndicator(id: string, parameters: Record<string, unknown> = {}) {
+  const item = indicatorRegistry[id];
+  if (!item) throw new Error(`Unknown indicator: ${id}`);
+  for (const [name, schema] of Object.entries(item.parameters)) {
+    const value = Number(parameters[name] ?? schema.default);
+    if (!Number.isFinite(value) || value < schema.min || value > schema.max || (schema.type === "integer" && !Number.isInteger(value))) throw new Error(`${id}.${name} must be a ${schema.type} between ${schema.min} and ${schema.max}`);
+  }
+  for (const constraint of item.parameterConstraints) {
+    const error = constraint.validate({ ...Object.fromEntries(Object.entries(item.parameters).map(([name, schema]) => [name, parameters[name] ?? schema.default])), ...parameters });
+    if (error) throw new Error(`${id}: ${error}`);
+  }
+  return item;
+}
 export function calculateIndicator(id: string, candles: Candle[], raw: Record<string, unknown> = {}): FeatureSeries {
   const definition = validateIndicator(id, raw), p = { ...Object.fromEntries(Object.entries(definition.parameters).map(([key, v]) => [key, v.default])), ...raw } as Record<string, number>;
   const c = close(candles), h = high(candles), l = low(candles), v = volume(candles), periodValue = Number(p.period ?? 14);
@@ -163,7 +297,7 @@ export function calculateIndicator(id: string, candles: Candle[], raw: Record<st
   if (["taker_buy_ratio", "taker_sell_ratio", "relative_base_delta", "base_volume_delta", "quote_volume_delta", "relative_quote_delta", "cumulative_volume_delta", "delta_ema", "delta_zscore", "taker_buy_ratio_ema", "consecutive_buyer_dominant", "consecutive_seller_dominant"].includes(id)) { const delta = Float64Array.from(candles, (x) => 2 * n(x.takerBuyBaseVolume) - n(x.volume)), quoteDelta = Float64Array.from(candles, (x) => 2 * n(x.takerBuyQuoteVolume) - n(x.quoteVolume)), buyRatio = Float64Array.from(candles, (x) => n(x.volume) ? n(x.takerBuyBaseVolume) / n(x.volume) : NaN); if (id === "taker_buy_ratio") return { taker_buy_ratio: buyRatio }; if (id === "taker_sell_ratio") return { taker_sell_ratio: Float64Array.from(buyRatio, (x) => 1 - x) }; if (id === "base_volume_delta") return { base_volume_delta: delta }; if (id === "quote_volume_delta") return { quote_volume_delta: quoteDelta }; if (id === "relative_base_delta") return { relative_base_delta: Float64Array.from(delta, (x, i) => v[i] ? x / v[i] : NaN) }; if (id === "relative_quote_delta") { const qv = quoteVolume(candles); return { relative_quote_delta: Float64Array.from(quoteDelta, (x, i) => qv[i] ? x / qv[i] : NaN) }; } if (id === "delta_ema") return { delta_ema: ema(delta, periodValue) }; if (id === "taker_buy_ratio_ema") return { taker_buy_ratio_ema: ema(buyRatio, periodValue) }; if (id === "delta_zscore") { const average = rolling(delta, periodValue, mean), deviation = rolling(delta, periodValue, std); return { delta_zscore: Float64Array.from(delta, (x, i) => deviation[i] ? (x - average[i]) / deviation[i] : NaN) }; } if (id === "consecutive_buyer_dominant" || id === "consecutive_seller_dominant") { const buyers = id === "consecutive_buyer_dominant"; const out = nan(c.length); let streak = 0; for (let i = 0; i < c.length; i++) { streak = (buyers ? buyRatio[i] > .5 : buyRatio[i] < .5) ? streak + 1 : 0; out[i] = streak; } return { [id]: out }; } return { cvd: cumulative(delta) }; }
   if (id === "highest_high") return { highest_high: rolling(h, periodValue, (x) => Math.max(...x)) };
   if (id === "lowest_low") return { lowest_low: rolling(l, periodValue, (x) => Math.min(...x)) };
-  if (id === "donchian") { const upper = rolling(h, periodValue, (x) => Math.max(...x)), lower = rolling(l, periodValue, (x) => Math.min(...x)); return { upper, lower, middle: Float64Array.from(upper, (x, i) => (x + lower[i]) / 2) }; }
+  if (id === "donchian") { const upper = nan(c.length), lower = nan(c.length); for (let i = periodValue; i < c.length; i++) { upper[i] = Math.max(...Array.from(h.slice(i - periodValue, i))); lower[i] = Math.min(...Array.from(l.slice(i - periodValue, i))); } return { upper, lower, middle: Float64Array.from(upper, (x, i) => Number.isFinite(x) && Number.isFinite(lower[i]) ? (x + lower[i]) / 2 : NaN) }; }
   if (id === "swing_high" || id === "swing_low") { const source = id === "swing_high" ? h : l, isHigh = id === "swing_high", out = nan(c.length); let latest = Number.NaN; for (let i = periodValue * 2; i < source.length; i++) { const pivot = i - periodValue, window = Array.from(source.slice(i - periodValue * 2, i + 1)), value = source[pivot], extreme = isHigh ? Math.max(...window) : Math.min(...window); if (value === extreme && window.filter((x) => x === extreme).length === 1) latest = value; out[i] = latest; } return { [id]: out }; }
   if (id === "donchian_breakout" || id === "breakout_age") { const up = nan(c.length), down = nan(c.length), age = nan(c.length); let since = Number.NaN; for (let i = periodValue; i < c.length; i++) { const priorHigh = Math.max(...Array.from(h.slice(i - periodValue, i))), priorLow = Math.min(...Array.from(l.slice(i - periodValue, i))); up[i] = c[i] > priorHigh ? 1 : 0; down[i] = c[i] < priorLow ? 1 : 0; since = up[i] || down[i] ? 0 : Number.isFinite(since) ? since + 1 : Number.NaN; age[i] = since; } return id === "donchian_breakout" ? { breakout_up: up, breakout_down: down } : { bars_since_breakout: age }; }
   if (id === "distance_to_recent_high" || id === "distance_to_recent_low") { const reference = id === "distance_to_recent_high" ? rolling(h, periodValue, (x) => Math.max(...x)) : rolling(l, periodValue, (x) => Math.min(...x)); return { distance_pct: Float64Array.from(c, (x, i) => reference[i] ? (x / reference[i] - 1) * 100 : NaN) }; }

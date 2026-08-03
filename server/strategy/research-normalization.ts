@@ -15,7 +15,7 @@ export function normalizeCondition(node: ConditionNode): ConditionNode {
     if (normalized.right && !Array.isArray(normalized.right) && reversible[normalized.operator] && conditionKey(normalized.left) > conditionKey(normalized.right)) return { ...normalized, left: normalized.right, operator: reversible[normalized.operator] as typeof normalized.operator, right: normalized.left };
     return normalized;
   }
-  const children = node.children.map(normalizeCondition);
+  const children = node.children.flatMap((child) => child && "type" in child && child.operator === node.operator && ["AND", "OR"].includes(node.operator) ? child.children : [child]).map(normalizeCondition);
   if (node.operator === "AND" || node.operator === "OR") {
     const unique = [...new Map(children.map((child) => [conditionKey(child), child])).values()].sort((left, right) => conditionKey(left).localeCompare(conditionKey(right)));
     return { ...node, children: unique };
@@ -24,8 +24,10 @@ export function normalizeCondition(node: ConditionNode): ConditionNode {
 }
 export function normalizedCandidateHash(ast: Record<string, unknown>) {
   const normalized = normalizeValue({ ...ast, longEntry: ast.longEntry ? normalizeCondition(ast.longEntry as ConditionNode) : undefined, shortEntry: ast.shortEntry ? normalizeCondition(ast.shortEntry as ConditionNode) : undefined, longExit: ast.longExit ? normalizeCondition(ast.longExit as ConditionNode) : undefined, shortExit: ast.shortExit ? normalizeCondition(ast.shortExit as ConditionNode) : undefined }) as Record<string, unknown>;
-  return { normalized, hash: createHash("sha256").update(canonicalJson(normalized)).digest("hex") };
+  const canonical = canonicalJson(normalized);
+  return { normalized, canonical, hash: createHash("sha256").update(canonical).digest("hex"), semanticFingerprint: createHash("sha256").update(canonical).digest("hex") };
 }
+export function semanticFingerprint(ast: Record<string, unknown>) { return normalizedCandidateHash(ast).semanticFingerprint; }
 export function complexityOf(node: unknown): number {
   if (!node || typeof node !== "object") return 0;
   const source = node as Record<string, unknown>;
