@@ -78,7 +78,8 @@ class VerificationWorker {
         }
         const tested = await simulate(scalePeriods<StrategyConfig>(config, selection.selected.periodMultiplier), engine, initial, undefined, () => verificationRepository.get(run.id)?.cancelRequested ?? false, rules, { start: testStart, end: testEnd });
         if (tested.cancelled) { await verificationRepository.update(run.id, { status: "CANCELLED", stage: "CANCELLED", completedAt: new Date() }); return; }
-        walkForward.push({ ...base, status: "COMPLETED", selectedPeriodMultiplier: selection.selected.periodMultiplier, trainingNetProfit: selection.selected.metrics.netProfit, outOfSample: stressSummary(verificationMetrics(tested.trades, tested.equity)) });
+        const outOfSample = stressSummary(verificationMetrics(tested.trades, tested.equity));
+        walkForward.push({ ...base, status: "COMPLETED", selectedPeriodMultiplier: selection.selected.periodMultiplier, trainingNetProfit: selection.selected.metrics.netProfit, ...outOfSample, outOfSample });
         await verificationRepository.update(run.id, { stageProgress: (fold + 1) / 3, progress: .98 + .015 * (fold + 1) / 3 });
       }
     }

@@ -3,7 +3,7 @@
 import { useEffect, useRef } from "react";
 import { fmtNum } from "./ui";
 
-type MonteCarlo = { count: number; pathsShown?: number; paths?: number[][]; percentilePaths?: { p05: number[]; median: number[]; p95: number[] }; initialBalance: number; p05FinalEquity: number; medianFinalEquity: number; p95FinalEquity: number; probabilityOfProfit: number };
+type MonteCarlo = { count: number; model?: string; pathsShown?: number; paths?: number[][]; percentilePaths?: { p05: number[]; median: number[]; p95: number[] }; initialBalance: number; p05FinalEquity: number; medianFinalEquity: number; p95FinalEquity: number; probabilityOfProfit: number; ruinedPathCount?: number; ruinProbabilityPct?: number };
 
 export default function MonteCarloPaths({ data }: { data: MonteCarlo }) {
   const host = useRef<HTMLCanvasElement>(null);
@@ -21,6 +21,7 @@ export default function MonteCarloPaths({ data }: { data: MonteCarlo }) {
       for (let i = 0; i < 5; i++) { const lineY = 18 + i / 4 * (height - 42); context.beginPath(); context.moveTo(42, lineY); context.lineTo(width - 16, lineY); context.stroke(); context.fillStyle = "#69737f"; context.font = "9px monospace"; context.fillText(fmtNum(max - i / 4 * (max - min), 0), 2, lineY + 3); }
       context.beginPath(); band.p05.forEach((value, index) => index ? context.lineTo(x(index), y(value)) : context.moveTo(x(index), y(value))); [...band.p95].reverse().forEach((value, index) => context.lineTo(x(band.p95.length - 1 - index), y(value))); context.closePath(); context.fillStyle = "rgba(45, 212, 191, .14)"; context.fill();
       context.strokeStyle = "rgba(118, 160, 196, .22)"; context.lineWidth = 1; paths.forEach((path) => { context.beginPath(); path.forEach((value, index) => index ? context.lineTo(x(index), y(value)) : context.moveTo(x(index), y(value))); context.stroke(); });
+      context.fillStyle = "#ff5c5c"; paths.forEach((path) => { const ruinedAt = path.findIndex((value) => value <= 0); if (ruinedAt > 0) { context.beginPath(); context.arc(x(ruinedAt), y(path[ruinedAt]), 2.5, 0, Math.PI * 2); context.fill(); } });
       context.setLineDash([5, 4]); context.strokeStyle = "#f5a524"; context.beginPath(); context.moveTo(42, y(data.initialBalance)); context.lineTo(width - 16, y(data.initialBalance)); context.stroke(); context.setLineDash([]);
       [[band.p05, "#ff5c5c"], [band.median, "#2dd4bf"], [band.p95, "#58a6ff"]].forEach(([series, color]) => { context.strokeStyle = String(color); context.lineWidth = 2; context.beginPath(); (series as number[]).forEach((value, index) => index ? context.lineTo(x(index), y(value)) : context.moveTo(x(index), y(value))); context.stroke(); });
       context.fillStyle = "#7e8a98"; context.font = "9px monospace"; context.fillText("TRADE SEQUENCE", width / 2 - 36, height - 8);
