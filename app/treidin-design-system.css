@@ -137,4 +137,7 @@ button:disabled { cursor:not-allowed; opacity:.55; }
 .settings-grid .health-list > div:not(.panel-title) { grid-template-columns:16px 1fr auto; min-height:44px; padding:10px 16px; border-bottom-color:var(--border-subtle); color:var(--text-secondary); font:12px var(--sans); }
 .settings-grid .health-list > div strong { color:var(--text-primary); font:600 11px var(--sans); }
 @media (max-width:760px) { .settings-grid .settings-form > label { grid-template-columns:1fr; gap:7px; padding:12px; }.settings-grid > .panel > dl { padding:10px 12px 14px; }.settings-grid .settings-form > .primary { width:calc(100% - 24px); margin:12px; } }
+.notice.notice-warning { border-color:rgba(246,184,74,.38); background:rgba(246,184,74,.09); }
+.notice.notice-warning strong { color:var(--warning); }
+.notice.notice-warning p { color:#f6d18c; }
 @media (prefers-reduced-motion:reduce) { *,*::before,*::after { scroll-behavior:auto !important; transition-duration:.01ms !important; animation-duration:.01ms !important; animation-iteration-count:1 !important; } }
