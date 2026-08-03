@@ -9,6 +9,7 @@ import { simulate } from "./simulation.js";
 import type { ExecutionRules } from "./simulation.js";
 import { strategyWarmupBars, type StrategyConfig } from "./model.js";
 import { MONTE_CARLO_ENGINE_VERSION, monteCarlo } from "./monte-carlo.js";
+import { WALK_FORWARD_POLICY_VERSION, selectWalkForwardCandidate } from "./walk-forward.js";
 
 export const SIMULATION_ENGINE_VERSION = "2026.09.accounting.1";
 function closedWindow(start: Date, end: Date, timeframe: string) {
@@ -52,7 +53,35 @@ class VerificationWorker {
     let parameterRobustness: Array<Record<string, unknown>> | null = null;
     if (run.profile === "FULL") { await verificationRepository.update(run.id, { stage: "PARAMETER_ROBUSTNESS", progress: .91, stageProgress: 0 }); parameterRobustness = [{ periodMultiplier: 1, name: "BASELINE", ...stressSummary(metrics) }]; const multipliers = [.8, 1.2]; for (let index = 0; index < multipliers.length; index++) { const multiplier = multipliers[index], robust = await simulate(scalePeriods<StrategyConfig>(config, multiplier), engine, initial, undefined, () => verificationRepository.get(run.id)?.cancelRequested ?? false, rules, baseWindow); if (robust.cancelled) { await verificationRepository.update(run.id, { status: "CANCELLED", stage: "CANCELLED", completedAt: new Date() }); return; } parameterRobustness.push({ periodMultiplier: multiplier, name: `PERIODS_${Math.round(multiplier * 100)}PCT`, ...stressSummary(verificationMetrics(robust.trades, robust.equity)) }); await verificationRepository.update(run.id, { stageProgress: (index + 1) / multipliers.length, progress: .91 + .07 * (index + 1) / multipliers.length }); } }
     let walkForward: Array<Record<string, unknown>> | null = null;
-    if (run.profile === "FULL") { await verificationRepository.update(run.id, { stage: "WALK_FORWARD", progress: .98, stageProgress: 0 }); walkForward = []; const firstTestAt = run.requestedStart.getTime() + (run.requestedEnd.getTime() - run.requestedStart.getTime()) / 2, testWidth = (run.requestedEnd.getTime() - firstTestAt) / 3, candidates = [.8, 1, 1.2]; for (let fold = 0; fold < 3; fold++) { const testStart = new Date(firstTestAt + fold * testWidth), testEnd = new Date(fold === 2 ? run.requestedEnd.getTime() : firstTestAt + (fold + 1) * testWidth), trainingEnd = new Date(testStart.getTime() - 1); let selectedMultiplier = 1, selectedMetric = -Infinity; for (const multiplier of candidates) { const trained = await simulate(scalePeriods<StrategyConfig>(config, multiplier), engine, initial, undefined, () => verificationRepository.get(run.id)?.cancelRequested ?? false, rules, { start: run.requestedStart, end: trainingEnd }); if (trained.cancelled) { await verificationRepository.update(run.id, { status: "CANCELLED", stage: "CANCELLED", completedAt: new Date() }); return; } const candidateMetric = verificationMetrics(trained.trades, trained.equity).netProfit; if (candidateMetric > selectedMetric) { selectedMetric = candidateMetric; selectedMultiplier = multiplier; } } const tested = await simulate(scalePeriods<StrategyConfig>(config, selectedMultiplier), engine, initial, undefined, () => verificationRepository.get(run.id)?.cancelRequested ?? false, rules, { start: testStart, end: testEnd }); if (tested.cancelled) { await verificationRepository.update(run.id, { status: "CANCELLED", stage: "CANCELLED", completedAt: new Date() }); return; } walkForward.push({ fold: fold + 1, trainStart: run.requestedStart.toISOString(), trainEnd: trainingEnd.toISOString(), testStart: testStart.toISOString(), testEnd: testEnd.toISOString(), selectedPeriodMultiplier: selectedMultiplier, trainingNetProfit: selectedMetric, ...stressSummary(verificationMetrics(tested.trades, tested.equity)) }); await verificationRepository.update(run.id, { stageProgress: (fold + 1) / 3, progress: .98 + .015 * (fold + 1) / 3 }); } }
+    if (run.profile === "FULL") {
+      await verificationRepository.update(run.id, { stage: "WALK_FORWARD", progress: .98, stageProgress: 0 });
+      walkForward = [];
+      const firstTestAt = run.requestedStart.getTime() + (run.requestedEnd.getTime() - run.requestedStart.getTime()) / 2;
+      const testWidth = (run.requestedEnd.getTime() - firstTestAt) / 3;
+      const multipliers = [.8, 1, 1.2];
+      for (let fold = 0; fold < 3; fold++) {
+        const testStart = new Date(firstTestAt + fold * testWidth);
+        const testEnd = new Date(fold === 2 ? run.requestedEnd.getTime() : firstTestAt + (fold + 1) * testWidth);
+        const trainingEnd = new Date(testStart.getTime() - 1);
+        const trainingCandidates: Array<{ periodMultiplier: number; metrics: ReturnType<typeof verificationMetrics> }> = [];
+        for (const periodMultiplier of multipliers) {
+          const trained = await simulate(scalePeriods<StrategyConfig>(config, periodMultiplier), engine, initial, undefined, () => verificationRepository.get(run.id)?.cancelRequested ?? false, rules, { start: run.requestedStart, end: trainingEnd });
+          if (trained.cancelled) { await verificationRepository.update(run.id, { status: "CANCELLED", stage: "CANCELLED", completedAt: new Date() }); return; }
+          trainingCandidates.push({ periodMultiplier, metrics: verificationMetrics(trained.trades, trained.equity) });
+        }
+        const selection = selectWalkForwardCandidate(trainingCandidates);
+        const base = { fold: fold + 1, policyVersion: WALK_FORWARD_POLICY_VERSION, eligibilityPolicy: selection.policy, trainStart: run.requestedStart.toISOString(), trainEnd: trainingEnd.toISOString(), testStart: testStart.toISOString(), testEnd: testEnd.toISOString(), candidates: selection.candidates.map((candidate) => ({ periodMultiplier: candidate.periodMultiplier, ...stressSummary(candidate.metrics), eligibility: candidate.eligibility })) };
+        if (!selection.selected) {
+          walkForward.push({ ...base, status: "NO_ELIGIBLE_CANDIDATE", selectedPeriodMultiplier: null, trainingNetProfit: null, outOfSample: null });
+          await verificationRepository.update(run.id, { stageProgress: (fold + 1) / 3, progress: .98 + .015 * (fold + 1) / 3 });
+          continue;
+        }
+        const tested = await simulate(scalePeriods<StrategyConfig>(config, selection.selected.periodMultiplier), engine, initial, undefined, () => verificationRepository.get(run.id)?.cancelRequested ?? false, rules, { start: testStart, end: testEnd });
+        if (tested.cancelled) { await verificationRepository.update(run.id, { status: "CANCELLED", stage: "CANCELLED", completedAt: new Date() }); return; }
+        walkForward.push({ ...base, status: "COMPLETED", selectedPeriodMultiplier: selection.selected.periodMultiplier, trainingNetProfit: selection.selected.metrics.netProfit, outOfSample: stressSummary(verificationMetrics(tested.trades, tested.equity)) });
+        await verificationRepository.update(run.id, { stageProgress: (fold + 1) / 3, progress: .98 + .015 * (fold + 1) / 3 });
+      }
+    }
     const dataAudit = { usesClosedCompleteCandlesOnly: true, pointInTimeFeatureAccess: true, requiredTimeframes: config.requiredTimeframes, warmupBars, warmupContextStart: warmupStart.toISOString(), fingerprint: run.dataFingerprint, exchangeRulesApplied: Boolean(metadata), fundingMode: config.costs.fundingMode, knownLimitations: config.costs.fundingMode === "NONE" ? ["Funding was not modeled."] : [] };
     const sc = scorecard(metrics, simulated.warnings); const breakdowns = { calendar: calendarBreakdown(simulated.trades), marketRegimes: marketRegimes(simulated.trades, engine, config.triggerTimeframe), outOfSample: { split: Number(run.options.oosSplit), start: oosStart.toISOString(), end: run.requestedEnd.toISOString(), ...stressSummary(oosMetrics) }, monteCarlo: mc, costStress, parameterRobustness, walkForward, dataAudit };
     await verificationRepository.storeTrades(run.id, simulated.trades); await verificationRepository.storeResult(run.id, { metrics, equityCurve: simulated.equity, breakdowns, scorecard: sc, funnel: simulated.funnel, warnings: simulated.warnings }); await verificationRepository.update(run.id, { status: "COMPLETED", stage: "COMPLETED", progress: 1, stageProgress: 1, candlesProcessed: triggerCount, eventsProcessed: triggerCount, tradesSimulated: simulated.trades.length, completedWork: triggerCount, completedAt: new Date() }); await verificationRepository.log(run.id, "INFO", "COMPLETED", "RUN_COMPLETED", `Completed with ${simulated.trades.length} simulated trades`); await (async () => { await import("../db/database.js").then(({ sqlite }) => sqlite.writer.enqueue(5, "strategy-version-status", (db) => db.prepare("UPDATE strategy_versions SET verification_status=? WHERE id=?").run(sc.status === "PASS" ? "VERIFIED" : sc.status === "WARNING" ? "VERIFICATION_WARNING" : "VERIFICATION_FAILED", version.id))); })();

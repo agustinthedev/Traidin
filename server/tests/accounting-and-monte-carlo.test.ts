@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { strategyConfigSchema } from "../strategy/model.js";
 import { verificationMetrics } from "../strategy/metrics.js";
 import { monteCarlo } from "../strategy/monte-carlo.js";
+import { selectWalkForwardCandidate } from "../strategy/walk-forward.js";
 import type { SimTrade } from "../strategy/simulation.js";
 
 const trade = (grossPnl: number, fees: number, fundingPnl: number, netRMultiple: number): SimTrade => ({
@@ -29,5 +30,14 @@ describe("verification accounting and Monte Carlo", () => {
     expect(result.ruinProbabilityPct).toBe(100);
     expect(result.paths.flat().every((value) => value >= 0)).toBe(true);
     expect([result.p05MaxDrawdownPct, result.medianMaxDrawdownPct, result.p95MaxDrawdownPct].every((value) => value >= -100 && value <= 0)).toBe(true);
+  });
+
+  it("does not select a losing or undersampled walk-forward candidate", () => {
+    const result = selectWalkForwardCandidate([
+      { periodMultiplier: .8, metrics: { tradeCount: 4, netProfit: 100, profitFactor: 2, maxDrawdownPct: -2 } },
+      { periodMultiplier: 1, metrics: { tradeCount: 40, netProfit: -1, profitFactor: 1.4, maxDrawdownPct: -5 } },
+    ]);
+    expect(result.selected).toBeNull();
+    expect(result.candidates.map((candidate) => candidate.eligibility.reasons.length)).toEqual([1, 1]);
   });
 });
