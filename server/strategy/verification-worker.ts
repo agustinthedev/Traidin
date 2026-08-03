@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { intervalMs } from "../domain/intervals.js";
+import { alignCeil, bucketOpen, expectedClose, intervalMs } from "../domain/intervals.js";
 import { candleRepository } from "../db/repository.js";
 import { metadataRepository } from "../db/repository.js";
 import { FeatureEngine } from "./feature-engine.js";
@@ -10,8 +10,23 @@ import type { ExecutionRules } from "./simulation.js";
 import { strategyWarmupBars, type StrategyConfig } from "./model.js";
 
 export const SIMULATION_ENGINE_VERSION = "2026.08.core.2";
+function closedWindow(start: Date, end: Date, timeframe: string) {
+  const effectiveStart = alignCeil(start, timeframe);
+  const endingBucket = bucketOpen(end, timeframe);
+  const effectiveEnd = end.getTime() >= expectedClose(endingBucket, timeframe).getTime()
+    ? endingBucket
+    : new Date(endingBucket.getTime() - intervalMs(timeframe));
+  return { effectiveStart, effectiveEnd };
+}
 export function historicalAvailability(symbol: string, timeframes: string[], start: Date, end: Date) {
-  return timeframes.map((timeframe) => { const rows = candleRepository.verificationRange(symbol, timeframe, start, end); const gaps = candleRepository.missingRanges(symbol, timeframe, start, end, intervalMs(timeframe)); const expected = Math.floor((end.getTime() - start.getTime()) / intervalMs(timeframe)) + 1; return { symbol, timeframe, first: rows[0]?.openTime ?? null, last: rows.at(-1)?.closeTime ?? null, candles: rows.length, completeCandles: rows.length, gaps: gaps.length, completeness: expected ? rows.length / expected * 100 : 0, effectiveStart: rows[0]?.openTime ?? null, effectiveEnd: rows.at(-1)?.closeTime ?? null }; });
+  return timeframes.map((timeframe) => {
+    const range = closedWindow(start, end, timeframe);
+    if (range.effectiveEnd < range.effectiveStart) return { symbol, timeframe, first: null, last: null, candles: 0, completeCandles: 0, gaps: 0, completeness: 0, effectiveStart: null, effectiveEnd: null };
+    const rows = candleRepository.verificationRange(symbol, timeframe, range.effectiveStart, range.effectiveEnd);
+    const gaps = candleRepository.missingRanges(symbol, timeframe, range.effectiveStart, range.effectiveEnd, intervalMs(timeframe));
+    const expected = Math.floor((range.effectiveEnd.getTime() - range.effectiveStart.getTime()) / intervalMs(timeframe)) + 1;
+    return { symbol, timeframe, first: rows[0]?.openTime ?? null, last: rows.at(-1)?.closeTime ?? null, candles: rows.length, completeCandles: rows.length, gaps: gaps.length, completeness: expected ? rows.length / expected * 100 : 0, effectiveStart: rows[0]?.openTime ?? null, effectiveEnd: rows.at(-1)?.closeTime ?? null };
+  });
 }
 export function dataFingerprint(symbol: string, timeframes: string[], start: Date, end: Date, warmupBars: Record<string, number> = {}) { const availability = historicalAvailability(symbol, timeframes, start, end); const warmup = timeframes.map((timeframe) => { const bars = warmupBars[timeframe] ?? 0, contextStart = new Date(start.getTime() - intervalMs(timeframe) * bars), available = bars ? candleRepository.verificationRange(symbol, timeframe, contextStart, new Date(start.getTime() - 1)).length : 0; return { timeframe, bars, contextStart: contextStart.toISOString(), available, complete: available >= bars }; }); const snapshot = { symbol, requestedRange: { start: start.toISOString(), end: end.toISOString() }, frames: availability, warmup }; return { ...snapshot, checksum: createHash("sha256").update(JSON.stringify(snapshot)).digest("hex") }; }
 function seeded(seed: number) { let state = seed >>> 0; return () => ((state = (state * 1664525 + 1013904223) >>> 0) / 2 ** 32); }

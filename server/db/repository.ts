@@ -189,7 +189,7 @@ export class CandleRepository {
   ) {
     const rows = sqlite.reader
       .prepare(
-        "SELECT open_time,lag(open_time) OVER (ORDER BY open_time) AS previous_time FROM candles WHERE symbol=? AND timeframe=? AND open_time BETWEEN ? AND ? ORDER BY open_time",
+        "SELECT open_time,lag(open_time) OVER (ORDER BY open_time) AS previous_time FROM candles WHERE symbol=? AND timeframe=? AND open_time BETWEEN ? AND ? AND is_closed=1 AND is_complete=1 ORDER BY open_time",
       )
       .all(symbol, timeframe, start.getTime(), end.getTime()) as Array<{
       open_time: number;
@@ -204,12 +204,11 @@ export class CandleRepository {
           count: Math.floor((end.getTime() - start.getTime()) / stepMs) + 1,
         },
       ];
-    if (rows[0].open_time > start.getTime())
-      gaps.push({
-        start,
-        end: new Date(rows[0].open_time - stepMs),
-        count: Math.floor((rows[0].open_time - start.getTime()) / stepMs),
-      });
+    if (rows[0].open_time > start.getTime()) {
+      const count = Math.floor((rows[0].open_time - start.getTime()) / stepMs);
+      if (count > 0)
+        gaps.push({ start, end: new Date(rows[0].open_time - stepMs), count });
+    }
     for (const row of rows)
       if (
         row.previous_time != null &&
@@ -221,12 +220,11 @@ export class CandleRepository {
           count: Math.floor((row.open_time - row.previous_time) / stepMs) - 1,
         });
     const last = rows.at(-1)!.open_time;
-    if (last < end.getTime())
-      gaps.push({
-        start: new Date(last + stepMs),
-        end,
-        count: Math.floor((end.getTime() - last) / stepMs),
-      });
+    if (last < end.getTime()) {
+      const count = Math.floor((end.getTime() - last) / stepMs);
+      if (count > 0)
+        gaps.push({ start: new Date(last + stepMs), end, count });
+    }
     return gaps;
   }
 }
