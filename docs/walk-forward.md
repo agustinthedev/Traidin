@@ -1,5 +1,5 @@
-# Walk-Forward
+# Walk-forward validation
 
-The Full profile uses three expanding-window folds. For each fold, the engine evaluates 80%, 100% and 120% period configurations on only the history before that fold's test interval, selects the highest training net P&L variant, and then evaluates that selection on the subsequent untouched test interval.
+Each fold trains only on data before its OOS interval. Candidate period multipliers are evaluated independently in that training window and are eligible only with at least 30 completed training trades, positive net profit, profit factor of at least 1, and maximum drawdown no worse than 50%.
 
-Each fold records its train/test boundaries, selected period multiplier and independent test metrics. This keeps the selection and forward test chronologically separated; it does not use later fold data to select earlier parameters.
+The report persists every candidate, its training metrics, eligibility decision and reasons, the selected multiplier, and the OOS metrics. If no candidate is eligible, the fold is saved as `NO_ELIGIBLE_CANDIDATE` and no OOS configuration is silently selected. The policy version is stored alongside every fold.
