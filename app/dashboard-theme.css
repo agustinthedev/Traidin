@@ -676,7 +676,7 @@ tr:hover td {
 .report-export { margin-left: auto; color: #8dbbff; font: 8px var(--mono); letter-spacing: .08em; text-decoration: none; }
 .report-exports { display: flex; flex-wrap: wrap; gap: 12px; margin-left: auto; }
 .report-exports .report-export { margin-left: 0; }
-.report-pdf-action { display: flex; justify-content: flex-end; margin: -2px 0 10px; }
+.report-pdf-action { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 8px; margin: -2px 0 10px; }
 .report-pdf-action a { border: 1px solid #175eb5; background: #0d3f7e; color: #dbeaff; padding: 8px 11px; font: 9px var(--mono); font-weight: 700; letter-spacing: .08em; text-decoration: none; }
 .report-pdf-action a:hover { background: #1255a8; }
 .positive { color: var(--green) !important; }
