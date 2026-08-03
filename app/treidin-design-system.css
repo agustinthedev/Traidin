@@ -79,4 +79,10 @@ button:disabled { cursor:not-allowed; opacity:.55; }
 .execution-builder :is(input,select) { height:38px; padding:0 11px; border:1px solid var(--border-default); border-radius:10px !important; background:var(--background-secondary); color:var(--text-primary); font:12px var(--sans); }
 .strategy-builder .settings-form > label :is(input,select),.condition-builder :is(input,select),.builder-actions button { border-radius:10px !important; }
 .condition-row > button,.exit-condition-row > button { border-radius:9px !important; }
+.strategy-verifier .verifier-workspace { gap:20px; }
+.strategy-verifier .verification-launch { gap:14px; padding:16px; border:1px solid var(--border-subtle); border-radius:16px; background:var(--surface-primary); }
+.strategy-verifier .verification-launch .panel-title { margin:-16px -16px 0; }
+.strategy-verifier .verification-launch label { gap:6px; color:var(--text-secondary); font:600 11px var(--sans); letter-spacing:.02em; }
+.strategy-verifier .verification-launch :is(input,select) { height:38px; padding:0 11px; border:1px solid var(--border-default); border-radius:10px !important; background:var(--background-secondary); color:var(--text-primary); font:12px var(--sans); }
+.strategy-verifier .verification-launch :is(input,select):focus { outline:2px solid var(--accent-primary); outline-offset:2px; border-color:rgba(183,255,42,.5); }
 @media (prefers-reduced-motion:reduce) { *,*::before,*::after { scroll-behavior:auto !important; transition-duration:.01ms !important; animation-duration:.01ms !important; animation-iteration-count:1 !important; } }
