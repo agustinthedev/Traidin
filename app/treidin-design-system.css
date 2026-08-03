@@ -114,4 +114,12 @@ button:disabled { cursor:not-allowed; opacity:.55; }
 .comparison-controls select { height:38px; padding:0 11px; border:1px solid var(--border-default); border-radius:10px !important; background:var(--background-secondary); color:var(--text-primary); font:12px var(--sans); }
 .comparison-controls button { height:38px; padding:0 13px; border:1px solid rgba(183,255,42,.38); border-radius:10px !important; background:var(--accent-primary); color:#182000; font:700 11px var(--sans); letter-spacing:.02em; }
 .comparison-controls button:hover { background:#c5ff4b; transform:translateY(-1px); }
+.strategy-verifier table:has(.run-actions) th { color:var(--text-muted); font:650 10px var(--sans); letter-spacing:.075em; }
+.strategy-verifier table:has(.run-actions) td { height:50px; color:var(--text-secondary); font:12px var(--sans); font-variant-numeric:tabular-nums; }
+.strategy-verifier table:has(.run-actions) td:first-child { color:var(--text-primary); font-weight:520; }
+.strategy-verifier table:has(.run-actions) .block { margin-top:3px; color:var(--text-muted); font:10px var(--sans); }
+.strategy-verifier .run-actions { display:flex; align-items:center; gap:6px; white-space:nowrap; }
+.strategy-verifier .run-actions :is(.button-like,button) { display:inline-flex; align-items:center; justify-content:center; height:30px; margin:0; padding:0 10px; border:1px solid rgba(183,255,42,.3); border-radius:8px !important; background:rgba(183,255,42,.09); color:var(--accent-primary); font:700 10px var(--sans); letter-spacing:.02em; text-decoration:none; }
+.strategy-verifier .run-actions :is(.button-like,button):hover { border-color:rgba(183,255,42,.55); background:rgba(183,255,42,.16); }
+.strategy-verifier .run-actions .cancel { border-color:rgba(255,100,108,.35); background:rgba(255,100,108,.09); color:var(--danger); }
 @media (prefers-reduced-motion:reduce) { *,*::before,*::after { scroll-behavior:auto !important; transition-duration:.01ms !important; animation-duration:.01ms !important; animation-iteration-count:1 !important; } }
