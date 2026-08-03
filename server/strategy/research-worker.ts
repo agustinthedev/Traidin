@@ -8,7 +8,7 @@ import { dataFingerprint } from "./verification-worker.js";
 import { simulate } from "./simulation.js";
 import { createHash } from "node:crypto";
 
-export const RESEARCH_ENGINE_VERSION = "2026.09.chronological-compounding.1";
+export const RESEARCH_ENGINE_VERSION = "2026.09.configurable-families.1";
 export const RESEARCH_SPLITTER_VERSION = "2026.08.chronological.1";
 
 type Periods = { is: { start: Date; end: Date }; oos: { start: Date; end: Date }; holdout: { start: Date; end: Date } };
@@ -34,11 +34,12 @@ function candidateConfig(input: ResearchRunInput, index: number): { config: Stra
   const emaCross = { left: { type: "indicator" as const, indicator: "ema", parameters: { period: Math.min(emaFast, emaSlow), source: "close" }, timeframe }, operator: "crosses_above" as const, right: { type: "indicator" as const, indicator: "ema", parameters: { period: Math.max(emaFast, emaSlow), source: "close" }, timeframe } };
   const rsi = { left: { type: "indicator" as const, indicator: "rsi", parameters: { period: rsiPeriod, source: "close" }, timeframe }, operator: ">" as const, right: { type: "constant" as const, value: threshold } };
   const reverse = { ...emaCross, operator: "crosses_below" as const };
-  const useRsi = input.allowedIndicators.includes("rsi") && random() > .35;
-  const long = useRsi ? { type: "group" as const, operator: "AND" as const, children: [emaCross, rsi] } : emaCross;
-  const short = useRsi ? { type: "group" as const, operator: "AND" as const, children: [reverse, { ...rsi, operator: "<" as const, right: { type: "constant" as const, value: 100 - threshold } }] } : reverse;
+  const allowsEma = input.allowedIndicators.includes("ema"), allowsRsi = input.allowedIndicators.includes("rsi"), useRsi = allowsRsi && (!allowsEma || random() > .35);
+  const reverseRsi = { ...rsi, operator: "<" as const, right: { type: "constant" as const, value: 100 - threshold } };
+  const long = allowsEma ? useRsi ? { type: "group" as const, operator: "AND" as const, children: [emaCross, rsi] } : emaCross : rsi;
+  const short = allowsEma ? useRsi ? { type: "group" as const, operator: "AND" as const, children: [reverse, reverseRsi] } : reverse : reverseRsi;
   const config = strategyConfigSchema.parse({ ...base, longEntry: direction === "SHORT_ONLY" ? undefined : long, shortEntry: direction === "LONG_ONLY" ? undefined : short });
-  return { config, family: useRsi ? "EMA_CROSS_RSI" : "EMA_CROSS", rawAst: { longEntry: config.longEntry, shortEntry: config.shortEntry, stop: config.stop, takeProfit: config.takeProfit, sizing: config.sizing } };
+  return { config, family: allowsEma ? useRsi ? "EMA_CROSS_RSI" : "EMA_CROSS" : "RSI_THRESHOLD", rawAst: { longEntry: config.longEntry, shortEntry: config.shortEntry, stop: config.stop, takeProfit: config.takeProfit, sizing: config.sizing } };
 }
 function metricSummary(simulated: Awaited<ReturnType<typeof simulate>>) { const metrics = verificationMetrics(simulated.trades, simulated.equity), initialEquity = simulated.equity[0]?.balance ?? 0, finalEquity = simulated.equity.at(-1)?.balance ?? initialEquity, interval = Math.max(1, Math.ceil(simulated.equity.length / 200)), equity = simulated.equity.filter((_, index) => index % interval === 0); if (simulated.equity.length && equity.at(-1) !== simulated.equity.at(-1)) equity.push(simulated.equity.at(-1)!); return { trades: metrics.tradeCount, netProfit: metrics.netProfit, return: metrics.netProfitPct, profitFactor: metrics.profitFactor, expectancy: metrics.expectancy, maxDrawdownPct: metrics.maxDrawdownPct, fees: metrics.totalFees, initialEquity, finalEquity, equity }; }
 function passes(metrics: ReturnType<typeof metricSummary>, input: ResearchRunInput) { return Number(metrics.trades) >= input.minTrades && Number(metrics.profitFactor ?? 0) >= input.minProfitFactor && Number(metrics.maxDrawdownPct ?? Infinity) <= input.maxDrawdownPct; }
