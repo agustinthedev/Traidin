@@ -148,11 +148,6 @@ export default function Dashboard({ initialTab = "Overview", initialStrategyId, 
               </div>
             ))}
           </nav>
-          <div className="side-foot">
-            <span>DATA STORE</span>
-            <strong>SQLITE · WAL</strong>
-            <small>{status?.database?.path ?? "local"}</small>
-          </div>
         </aside>
         <section className="content">
           {error && (

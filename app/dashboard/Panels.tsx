@@ -584,10 +584,10 @@ export function DatabasePanel({
       />
       <div className="metric-grid database">
         <Metric
-          label="CONNECTION"
-          value={database?.integrity === "ok" ? "HEALTHY" : "ERROR"}
-          tone="positive"
-          detail={database?.path}
+          label="DATA STORE"
+          value="SQLITE · WAL"
+          tone={database?.integrity === "ok" ? "positive" : "negative"}
+          detail={database?.path ?? "local"}
         />
         <Metric
           label="JOURNAL MODE"

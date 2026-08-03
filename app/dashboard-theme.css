@@ -158,18 +158,6 @@ select:focus-visible {
   border: 1px solid #164c8e;
 }
 
-.side-foot {
-  margin: auto 4px 0;
-  padding: 14px 8px 5px;
-  border-top-color: #282828;
-  background: linear-gradient(180deg, transparent, #090909);
-}
-
-.side-foot strong {
-  color: var(--green);
-  letter-spacing: 0.08em;
-}
-
 .content {
   max-width: none;
   padding: 22px 26px 34px;
