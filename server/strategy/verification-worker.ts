@@ -9,7 +9,8 @@ import { simulate } from "./simulation.js";
 import type { ExecutionRules } from "./simulation.js";
 import { strategyWarmupBars, type StrategyConfig } from "./model.js";
 
-export const SIMULATION_ENGINE_VERSION = "2026.08.core.2";
+export const SIMULATION_ENGINE_VERSION = "2026.09.accounting.1";
+export const MONTE_CARLO_ENGINE_VERSION = "2026.09.accounting.1";
 function closedWindow(start: Date, end: Date, timeframe: string) {
   const effectiveStart = alignCeil(start, timeframe);
   const endingBucket = bucketOpen(end, timeframe);
