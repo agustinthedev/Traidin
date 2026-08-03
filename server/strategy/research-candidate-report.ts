@@ -85,6 +85,30 @@ export async function researchRunCandidatesReportPdf(input: { run: Row; candidat
     const table = (headers: string[], rows: unknown[][], widths: number[]) => { const drawHeader = () => { requireSpace(24); const y = document.y; document.rect(40, y - 3, 515, 17).fill("#0f2742"); let x = 44; headers.forEach((item, index) => { document.fillColor("#cbd5e1").font("Helvetica-Bold").fontSize(7).text(clean(item), x, y + 2, { width: widths[index] - 5, ellipsis: true }); x += widths[index]; }); document.y = y + 19; }; drawHeader(); rows.forEach((row) => { requireSpace(15); if (document.y + 15 > 778) { nextPage(); drawHeader(); } const y = document.y; let x = 44; row.forEach((item, index) => { document.fillColor("#28394c").font("Helvetica").fontSize(7).text(clean(item), x, y, { width: widths[index] - 5, ellipsis: true }); x += widths[index]; }); document.strokeColor("#d9e2ec").opacity(.2).moveTo(40, y + 12).lineTo(555, y + 12).stroke().opacity(1); document.y = y + 14; }); document.moveDown(.5); };
     const periodValue = (candidate: Row, period: string, field: string) => metric(candidate, period)[field];
     const candidates = [...input.candidates].sort((left, right) => Number(right.score ?? -Infinity) - Number(left.score ?? -Infinity));
+    const drawCandidateChart = (candidate: Row, index: number) => {
+      const periodNames = ["is", "oos", "holdout"], periodPoints = periodNames.map((period) => ({ period, points: equity(candidate, period) })), available = periodPoints.filter((entry) => entry.points.length > 1);
+      if (!available.length) { requireSpace(24); document.fillColor("#64748b").font("Helvetica").fontSize(7).text("Equity curve: no evaluated points persisted for this Candidate."); document.moveDown(.5); return; }
+      const stitched: EquityPoint[] = [], periods = (input.run.periods ?? {}) as Row;
+      let carriedBalance: number | null = null;
+      for (const entry of periodPoints) {
+        if (!entry.points.length) continue;
+        const first = entry.points[0]!.balance, scale: number = carriedBalance == null || first === 0 ? 1 : carriedBalance / first;
+        const period = periods[entry.period] as Row | undefined, start = new Date(String(period?.start ?? "")).getTime(), end = new Date(String(period?.end ?? "")).getTime();
+        if (carriedBalance != null && Number.isFinite(start)) stitched.push({ time: start, balance: carriedBalance });
+        for (const point of entry.points) stitched.push({ time: point.time, balance: point.balance * scale });
+        carriedBalance = entry.points.at(-1)!.balance * scale;
+        if (Number.isFinite(end)) stitched.push({ time: end, balance: carriedBalance });
+      }
+      const points = stitched.sort((left, right) => left.time - right.time), values = points.map((point) => point.balance), min = Math.min(...values), max = Math.max(...values), firstPeriod = periods.is as Row | undefined, lastPeriod = periods.holdout as Row | undefined, chartStart = new Date(String(firstPeriod?.start ?? points[0]!.time)).getTime(), chartEnd = new Date(String(lastPeriod?.end ?? points.at(-1)!.time)).getTime();
+      requireSpace(170);
+      const top = document.y, left = 40, width = 515, height = 112, x = (time: number) => left + (time - chartStart) / Math.max(chartEnd - chartStart, 1) * width, y = (value: number) => top + 19 + height - (value - min) / Math.max(max - min, 1) * height;
+      document.fillColor("#64748b").font("Helvetica-Bold").fontSize(8).text(`#${index + 1} EQUITY BY EVALUATION PERIOD`, left, top);
+      const palettes: Record<string, string> = { is: "#eaf4ff", oos: "#effae3", holdout: "#fff5df" }, lines: Record<string, string> = { is: "#50b7ff", oos: "#8bbd25", holdout: "#d48a18" };
+      periodNames.forEach((periodName) => { const period = periods[periodName] as Row | undefined, from = new Date(String(period?.start ?? "")).getTime(), to = new Date(String(period?.end ?? "")).getTime(); if (!Number.isFinite(from) || !Number.isFinite(to)) return; document.rect(x(from), top + 19, Math.max(0, x(to) - x(from)), height).fill(palettes[periodName]!); document.strokeColor(lines[periodName]!).lineWidth(.8).moveTo(x(from), top + 19).lineTo(x(from), top + 19 + height).stroke(); document.fillColor("#475569").font("Helvetica-Bold").fontSize(6.5).text(periodName.toUpperCase(), x(from) + 4, top + 23); });
+      document.strokeColor("#cbd5e1").lineWidth(.5).rect(left, top + 19, width, height).stroke();
+      points.forEach((point, pointIndex) => { if (pointIndex === 0) document.moveTo(x(point.time), y(point.balance)); else document.lineTo(x(point.time), y(point.balance)); });
+      document.strokeColor("#82c91e").lineWidth(1.35).stroke(); document.fillColor("#64748b").font("Helvetica").fontSize(6.5).text(`$${number(max)}`, left, top + 17, { width: 55 }).text(`$${number(min)}`, left, top + 19 + height - 3, { width: 55 }); document.y = top + 145;
+    };
 
     header();
     document.fillColor("#0f172a").font("Helvetica-Bold").fontSize(20).text(clean(input.run.name));
@@ -94,7 +118,7 @@ export async function researchRunCandidatesReportPdf(input: { run: Row; candidat
     title("All candidates");
     table(["#", "Candidate", "Status", "Family", "Complexity", "IS PF", "OOS PF", "Holdout PF", "Score"], candidates.map((candidate, index) => [index + 1, clean(candidate.id).slice(0, 8), candidate.status, candidate.family, candidate.complexityScore, metricNumber(periodValue(candidate, "is", "profitFactor"), 3), metricNumber(periodValue(candidate, "oos", "profitFactor"), 3), metricNumber(periodValue(candidate, "holdout", "profitFactor"), 3), metricNumber(candidate.score)]), [25, 58, 82, 75, 55, 54, 60, 70, 76]);
     title("Candidate configurations");
-    candidates.forEach((candidate, index) => { requireSpace(75); document.fillColor("#0f5f9e").font("Helvetica-Bold").fontSize(9).text(`#${index + 1} ${clean(candidate.id).slice(0, 8)} - ${clean(candidate.family)} - ${clean(candidate.status)}`); document.fillColor("#1f2937").font("Courier").fontSize(6.5).text(clean(JSON.stringify({ normalizedAst: candidate.normalizedAst, configuration: candidate.configuration }, null, 2)), 45, document.y + 4, { width: 505, height: 170, ellipsis: true }); document.moveDown(9); });
+    candidates.forEach((candidate, index) => { requireSpace(75); document.fillColor("#0f5f9e").font("Helvetica-Bold").fontSize(9).text(`#${index + 1} ${clean(candidate.id).slice(0, 8)} - ${clean(candidate.family)} - ${clean(candidate.status)}`); drawCandidateChart(candidate, index); document.fillColor("#1f2937").font("Courier").fontSize(6.5).text(clean(JSON.stringify({ normalizedAst: candidate.normalizedAst, configuration: candidate.configuration }, null, 2)), 45, document.y + 4, { width: 505, height: 170, ellipsis: true }); document.moveDown(9); });
     title("Export notes");
     fields([["Metric scope", "IS, OOS and holdout metrics are calculated on their respective chronological period."], ["Equity scope", "The Candidate explorer stitches period curves for visual continuity; the period metrics above remain independent."], ["Verification scope", "Candidates do not include persisted trade-level data or a full verification audit. Promote a Candidate and run Full Verification for that report."], ["Search engine", input.run.searchAlgorithmVersion], ["Random seed", input.run.randomSeed]]);
     footer();
