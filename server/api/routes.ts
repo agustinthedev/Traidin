@@ -116,6 +116,20 @@ export async function registerRoutes(app: FastifyInstance) {
       offset: q.offset,
     };
   });
+  app.get("/api/candles.csv", async (request, reply) => {
+    const q = z.object({ symbol, timeframe: z.string(), start: date, end: date }).parse(request.query);
+    const escape = (value: unknown) => `"${String(value ?? "").replaceAll("\"", "\"\"")}"`;
+    const fileName = `candles-${q.symbol}-${q.timeframe}-${q.start.toISOString().slice(0, 10)}-${q.end.toISOString().slice(0, 10)}.csv`;
+    const header = ["open_time", "close_time", "exchange", "market", "symbol", "timeframe", "open", "high", "low", "close", "volume", "quote_volume", "trade_count", "taker_buy_base_volume", "taker_buy_quote_volume", "first_trade_id", "last_trade_id", "is_closed", "is_complete", "source", "event_time", "received_at", "persisted_at"].join(",");
+    reply.hijack();
+    reply.raw.writeHead(200, { "Content-Type": "text/csv; charset=utf-8", "Content-Disposition": `attachment; filename=${fileName}`, "Cache-Control": "no-store" });
+    const write = async (chunk: string) => { if (!reply.raw.write(chunk)) await once(reply.raw, "drain"); };
+    await write(`${header}\n`);
+    for (const candle of candleRepository.iterateRange(q.symbol, q.timeframe, q.start, q.end)) {
+      await write([candle.openTime.toISOString(), candle.closeTime.toISOString(), candle.exchange, candle.market, candle.symbol, candle.timeframe, candle.open, candle.high, candle.low, candle.close, candle.volume, candle.quoteVolume, candle.tradeCount, candle.takerBuyBaseVolume, candle.takerBuyQuoteVolume, candle.firstTradeId, candle.lastTradeId, candle.isClosed, candle.isComplete, candle.source, candle.eventTime?.toISOString(), candle.receivedAt.toISOString(), candle.persistedAt.toISOString()].map(escape).join(",") + "\n");
+    }
+    reply.raw.end();
+  });
   app.get("/api/coverage", async () => candleRepository.coverage());
   app.get("/api/indicators", async () => Object.values(indicatorRegistry));
   app.get("/api/strategies", async () => strategyRepository.list().map((item) => ({ ...item, versions: strategyRepository.versions(item.id) })));

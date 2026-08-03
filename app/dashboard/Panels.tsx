@@ -1,6 +1,7 @@
 "use client";
 import { FormEvent, useState } from "react";
 import {
+  API,
   AnyRow,
   Empty,
   Metric,
@@ -14,26 +15,42 @@ import {
   localInput,
 } from "./ui";
 
+const CANDLE_PAGE_SIZE = 100;
+type HistoricalRange = { symbol: string; timeframe: string; start: string; end: string };
+
 export function Historical({ symbols }: { symbols: string[] }) {
   const [symbolValue, setSymbol] = useState(symbols[0] ?? "BTCUSDT");
   const [tf, setTf] = useState("1m");
   const [start, setStart] = useState(() => localInput(Date.now() - 86_400_000));
   const [end, setEnd] = useState(() => localInput(Date.now()));
   const [data, setData] = useState<AnyRow | null>(null);
+  const [activeRange, setActiveRange] = useState<HistoricalRange | null>(null);
+  const [page, setPage] = useState(0);
   const [busy, setBusy] = useState(false);
-  async function submit(e: FormEvent) {
-    e.preventDefault();
+  const queryString = (range: HistoricalRange, limit: number, offset = 0) => new URLSearchParams({ symbol: range.symbol, timeframe: range.timeframe, start: new Date(range.start).toISOString(), end: new Date(range.end).toISOString(), limit: String(limit), offset: String(offset) }).toString();
+  async function loadPage(range: HistoricalRange, nextPage: number) {
     setBusy(true);
     try {
-      setData(
-        await apiJson(
-          `/api/candles?symbol=${symbolValue}&timeframe=${tf}&start=${new Date(start).toISOString()}&end=${new Date(end).toISOString()}&limit=500`,
-        ),
-      );
+      setData(await apiJson(`/api/candles?${queryString(range, CANDLE_PAGE_SIZE, nextPage * CANDLE_PAGE_SIZE)}`));
+      setActiveRange(range);
+      setPage(nextPage);
     } finally {
       setBusy(false);
     }
   }
+  function submit(e: FormEvent) { e.preventDefault(); void loadPage({ symbol: symbolValue, timeframe: tf, start, end }, 0); }
+  function downloadCsv() {
+    const range = { symbol: symbolValue, timeframe: tf, start, end };
+    const link = document.createElement("a");
+    link.href = `${API}/api/candles.csv?${queryString(range, 0)}`;
+    link.download = `candles-${range.symbol}-${range.timeframe}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+  }
+  const totalPages = data ? Math.max(1, Math.ceil(Number(data.total) / CANDLE_PAGE_SIZE)) : 0;
+  const firstRow = data?.total ? Number(data.offset) + 1 : 0;
+  const lastRow = data ? Math.min(Number(data.offset) + data.rows.length, Number(data.total)) : 0;
   return (
     <>
       <PageHead eyebrow="DATA / EXPLORER" title="Historical Data" />
@@ -74,17 +91,23 @@ export function Historical({ symbols }: { symbols: string[] }) {
           />
         </label>
         <button disabled={busy}>{busy ? "QUERYING…" : "RUN QUERY"}</button>
+        <button type="button" onClick={downloadCsv}>DOWNLOAD CSV</button>
       </form>
       {data ? (
         <>
           <div className="result-line">
             <span>{fmtNum(data.total, 0)} RECORDS</span>
-            <span>SHOWING {data.rows.length}</span>
+            <span>SHOWING {firstRow}–{lastRow} OF {fmtNum(data.total, 0)}</span>
             <span>
               {symbolValue} / {tf}
             </span>
           </div>
           <CandleTable rows={data.rows} />
+          <div className="table-pagination" aria-label="Historical data pagination">
+            <button type="button" disabled={busy || page === 0 || !activeRange} onClick={() => activeRange && void loadPage(activeRange, page - 1)}>PREVIOUS</button>
+            <span>PAGE {page + 1} / {totalPages}</span>
+            <button type="button" disabled={busy || page + 1 >= totalPages || !activeRange} onClick={() => activeRange && void loadPage(activeRange, page + 1)}>NEXT</button>
+          </div>
         </>
       ) : (
         <Empty text="Select a range to inspect normalized candles." />

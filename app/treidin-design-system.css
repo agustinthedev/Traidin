@@ -140,4 +140,7 @@ button:disabled { cursor:not-allowed; opacity:.55; }
 .notice.notice-warning { border-color:rgba(246,184,74,.38); background:rgba(246,184,74,.09); }
 .notice.notice-warning strong { color:var(--warning); }
 .notice.notice-warning p { color:#f6d18c; }
+.table-pagination { display:flex; align-items:center; justify-content:flex-end; gap:10px; padding:14px 0 0; color:var(--text-secondary); font:600 11px var(--sans); }
+.table-pagination button { height:34px; padding:0 12px; border:1px solid var(--border-default); border-radius:9px !important; background:var(--surface-secondary); color:var(--text-primary); font:700 10px var(--sans); letter-spacing:.02em; }
+.table-pagination button:hover:not(:disabled) { border-color:rgba(183,255,42,.42); color:var(--accent-primary); }
 @media (prefers-reduced-motion:reduce) { *,*::before,*::after { scroll-behavior:auto !important; transition-duration:.01ms !important; animation-duration:.01ms !important; animation-iteration-count:1 !important; } }

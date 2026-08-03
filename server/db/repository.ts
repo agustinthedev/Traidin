@@ -131,6 +131,14 @@ export class CandleRepository {
         ) as SqlRow[]
     ).map(mapCandle);
   }
+  *iterateRange(symbol: string, timeframe: string, start: Date, end: Date) {
+    const rows = sqlite.reader
+      .prepare(
+        "SELECT * FROM candles WHERE symbol=? AND timeframe=? AND open_time BETWEEN ? AND ? ORDER BY open_time ASC",
+      )
+      .iterate(symbol, timeframe, start.getTime(), end.getTime()) as IterableIterator<SqlRow>;
+    for (const row of rows) yield mapCandle(row);
+  }
   verificationRange(symbol: string, timeframe: string, start: Date, end: Date) {
     return (
       sqlite.reader.prepare(
