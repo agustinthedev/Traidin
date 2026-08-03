@@ -4,6 +4,7 @@ type Row = Record<string, unknown>;
 type EquityPoint = { time: number; balance: number };
 
 const clean = (value: unknown) => String(value ?? "-").replace(/[^\x20-\x7E]/g, "?");
+const cleanMultiline = (value: unknown) => String(value ?? "-").replace(/[^\x09\x0A\x0D\x20-\x7E]/g, "?");
 const compact = (value: unknown, max = 15) => { const text = clean(value); return text.length > max ? `${text.slice(0, Math.max(1, max - 3))}...` : text; };
 const number = (value: unknown, digits = 2) => Number(value ?? 0).toLocaleString("en-US", { maximumFractionDigits: digits });
 const metricNumber = (value: unknown, digits = 2) => value == null || !Number.isFinite(Number(value)) ? "-" : number(value, digits);
@@ -61,7 +62,7 @@ export async function researchCandidateReportPdf(input: { run: Row; candidate: R
     chart();
     title("Strategy configuration");
     const configuration = JSON.stringify(input.candidate.configuration ?? {}, null, 2);
-    requireSpace(Math.min(300, configuration.length / 70 * 8 + 25)); document.fillColor("#e2e8f0").rect(40, document.y - 3, 515, Math.min(280, configuration.length / 70 * 8 + 16)).fill(); document.fillColor("#1f2937").font("Courier").fontSize(7).text(clean(configuration), 47, document.y + 4, { width: 500, height: 260, ellipsis: true }); document.moveDown(1);
+    requireSpace(Math.min(300, configuration.length / 70 * 8 + 25)); document.fillColor("#e2e8f0").rect(40, document.y - 3, 515, Math.min(280, configuration.length / 70 * 8 + 16)).fill(); document.fillColor("#1f2937").font("Courier").fontSize(7).text(cleanMultiline(configuration), 47, document.y + 4, { width: 500, height: 260, ellipsis: true }); document.moveDown(1);
     title("Interpretation and provenance");
     fields([["Evaluation method", "Chronological IS, OOS and holdout simulations; each period has independently calculated metrics."], ["Equity presentation", "The chart carries the preceding ending balance into the next period for continuity; it does not alter any period metric."], ["Report limitation", "Discovery candidates do not persist trade-level detail, Monte Carlo, stress testing or a full verification audit. Promote then run Full Verification for that report."], ["Run configuration hash", input.run.configHash], ["Simulation / search engine", `${input.run.engineVersion ?? "-"} / ${input.run.searchAlgorithmVersion ?? "-"}`]]);
     footer();
@@ -119,7 +120,7 @@ export async function researchRunCandidatesReportPdf(input: { run: Row; candidat
     title("All candidates");
     table(["#", "Candidate", "Status", "Family", "Complexity", "IS PF", "OOS PF", "Holdout PF", "Score"], candidates.map((candidate, index) => [index + 1, clean(candidate.id).slice(0, 8), compact(candidate.status, 16), compact(candidate.family, 15), candidate.complexityScore, metricNumber(periodValue(candidate, "is", "profitFactor"), 3), metricNumber(periodValue(candidate, "oos", "profitFactor"), 3), metricNumber(periodValue(candidate, "holdout", "profitFactor"), 3), metricNumber(candidate.score)]), [25, 58, 82, 75, 55, 54, 60, 70, 76]);
     requireSpace(450); title("Candidate configurations");
-    candidates.forEach((candidate, index) => { requireSpace(430); document.x = 40; document.fillColor("#0f5f9e").font("Helvetica-Bold").fontSize(9).text(`#${index + 1} ${clean(candidate.id).slice(0, 8)} - ${clean(candidate.family)} - ${clean(candidate.status)}`, 40, document.y, { lineBreak: false, ellipsis: true }); document.y += 14; drawCandidateChart(candidate, index); const configurationTop = document.y; document.fillColor("#1f2937").font("Courier").fontSize(6.5).text(clean(JSON.stringify({ normalizedAst: candidate.normalizedAst, configuration: candidate.configuration }, null, 2)), 45, configurationTop + 4, { width: 505, height: 170, ellipsis: true }); document.y = configurationTop + 180; });
+    candidates.forEach((candidate, index) => { requireSpace(430); document.x = 40; document.fillColor("#0f5f9e").font("Helvetica-Bold").fontSize(9).text(`#${index + 1} ${clean(candidate.id).slice(0, 8)} - ${clean(candidate.family)} - ${clean(candidate.status)}`, 40, document.y, { lineBreak: false, ellipsis: true }); document.y += 14; drawCandidateChart(candidate, index); const configurationTop = document.y; document.fillColor("#1f2937").font("Courier").fontSize(6.5).text(cleanMultiline(JSON.stringify({ normalizedAst: candidate.normalizedAst, configuration: candidate.configuration }, null, 2)), 45, configurationTop + 4, { width: 505, height: 170, ellipsis: true }); document.y = configurationTop + 180; });
     title("Export notes");
     fields([["Metric scope", "IS, OOS and holdout metrics are calculated on their respective chronological period."], ["Equity scope", "The Candidate explorer stitches period curves for visual continuity; the period metrics above remain independent."], ["Verification scope", "Candidates do not include persisted trade-level data or a full verification audit. Promote a Candidate and run Full Verification for that report."], ["Search engine", input.run.searchAlgorithmVersion], ["Random seed", input.run.randomSeed]]);
     footer();
