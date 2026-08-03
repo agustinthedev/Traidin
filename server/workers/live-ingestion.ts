@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import { get } from "node:http";
 import { config } from "../config.js";
 import { normalizeWsKline } from "../binance/normalize.js";
-import { candleRepository, gapRepository } from "../db/repository.js";
+import { candleRepository } from "../db/repository.js";
 import { eventBus } from "../events/bus.js";
 import { closedCandles, ingestLatency, persistedCandles, persistLatency, wsMessages } from "../observability.js";
 import { liveState } from "../live-state.js";

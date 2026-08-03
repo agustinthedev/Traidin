@@ -15,10 +15,8 @@ export default function TradeReplay({ runId, sequence, onClose }: { runId: strin
   const [padding, setPadding] = useState(180);
   const [activeOverlays, setActiveOverlays] = useState<Set<string>>(new Set());
 
-  useEffect(() => { setPadding(180); }, [runId, sequence]);
   useEffect(() => {
     let active = true;
-    setReplay(null); setError("");
     fetch(`${API}/api/verification-runs/${runId}/replay?sequence=${sequence}&padding=${padding}`)
       .then(async (response) => { if (!response.ok) throw new Error(await response.text()); return response.json() as Promise<Replay>; })
       .then((value) => { if (active) { setReplay(value); setActiveOverlays(new Set(value.overlays.map((overlay) => overlay.id))); } })
@@ -38,6 +36,6 @@ export default function TradeReplay({ runId, sequence, onClose }: { runId: strin
     return () => { instance.remove(); chart.current = null; };
   }, [replay, activeOverlays]);
 
-  const toggleOverlay = (id: string) => setActiveOverlays((current) => { const next = new Set(current); next.has(id) ? next.delete(id) : next.add(id); return next; });
+  const toggleOverlay = (id: string) => setActiveOverlays((current) => { const next = new Set(current); if (next.has(id)) next.delete(id); else next.add(id); return next; });
   return <section className="panel replay"><div className="panel-title"><span>TRADE REPLAY / #{sequence}</span><button onClick={onClose}>CLOSE REPLAY</button></div>{error ? <p className="empty">{error}</p> : !replay ? <p className="empty">Loading closed-candle replay...</p> : <><div className="replay-meta"><span>{replay.symbol} / {replay.timeframe}</span><span>{String(replay.trade.side)}</span><span>ENTRY {fmtDate(Number(replay.trade.entry_time))} @ {fmtNum(replay.trade.entry_price, 4)}</span><span>EXIT {fmtDate(Number(replay.trade.exit_time))} @ {fmtNum(replay.trade.exit_price, 4)}</span><span className={Number(replay.trade.net_pnl) >= 0 ? "positive" : "negative"}>NET {fmtNum(replay.trade.net_pnl, 2)}</span></div><div ref={host} className="replay-chart" aria-label="Interactive historical trade replay" /><div className="replay-controls">{replay.overlays.map((overlay) => <label key={overlay.id}><input type="checkbox" checked={activeOverlays.has(overlay.id)} onChange={() => toggleOverlay(overlay.id)} /> {overlay.label}</label>)}{padding < 2000 && <button onClick={() => setPadding((current) => Math.min(2000, current * 2))}>LOAD MORE CONTEXT ({padding} BARS)</button>}</div><div className="replay-legend"><b>Markers:</b> green entry · red exit {replay.overlays.length ? <> · <b>Active overlays:</b> {replay.overlays.filter((overlay) => activeOverlays.has(overlay.id)).map((overlay) => overlay.label).join(" · ") || "none"}</> : null}</div></>}</section>;
 }

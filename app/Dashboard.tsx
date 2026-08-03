@@ -107,6 +107,8 @@ export default function Dashboard() {
       <ToastViewport />
       <header className="topbar">
         <div className="brand">
+          {/* Static app mark; its tiny intrinsic dimensions avoid meaningful image optimization overhead. */}
+          {/* eslint-disable-next-line @next/next/no-img-element */}
           <img className="brand-mark" src="/treidin-mark.png" alt="Treidin" />
           <div>
             <strong>TREIDIN</strong>

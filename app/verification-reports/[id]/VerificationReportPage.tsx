@@ -2,8 +2,10 @@
 
 import { useEffect, useState } from "react";
 import { Report } from "../../dashboard/StrategyVerification";
-import { API, apiJson } from "../../dashboard/ui";
+import { apiJson } from "../../dashboard/ui";
 
+// API responses are heterogeneous JSON records until endpoint-specific schemas are shared with the client.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Row = Record<string, any>;
 
 export default function VerificationReportPage({ id }: { id: string }) {
@@ -32,6 +34,7 @@ export default function VerificationReportPage({ id }: { id: string }) {
     const cloned = await apiJson(`/api/verification-runs/${runId}/clone`, { method: "POST" });
     window.location.href = `/verification-reports/${cloned.id}`;
   };
-
+  // This link deliberately returns to the dashboard's client-side workspace entry point.
+  // eslint-disable-next-line @next/next/no-html-link-for-pages
   return <main className="standalone-report-page"><header className="standalone-report-header"><a className="report-back-link" href="/">← BACK TO DASHBOARD</a><div><small>STRATEGY VERIFICATION / REPORT</small><h1>{report?.name ?? "Loading verification report"}</h1></div>{report && <span className={`tag ${report.status === "COMPLETED" ? "ok" : report.status === "FAILED" ? "failed" : "warn"}`}>{report.status}</span>}</header>{error ? <section className="notice"><strong>REPORT UNAVAILABLE</strong><p>{error}</p></section> : report ? <Report report={report} trades={trades} onClone={(runId) => void clone(runId)} /> : <section className="panel report-loading">Loading complete verification report…</section>}</main>;
 }

@@ -3,12 +3,12 @@ import { alignCeil, bucketOpen, expectedClose, intervalMs } from "../domain/inte
 import { candleRepository } from "../db/repository.js";
 import { metadataRepository } from "../db/repository.js";
 import { FeatureEngine } from "./feature-engine.js";
-import { METRICS_ENGINE_VERSION, calendarBreakdown, scorecard, verificationMetrics } from "./metrics.js";
+import { calendarBreakdown, scorecard, verificationMetrics } from "./metrics.js";
 import { strategyRepository, verificationRepository } from "./repository.js";
 import { simulate } from "./simulation.js";
 import type { ExecutionRules } from "./simulation.js";
 import { strategyWarmupBars, type StrategyConfig } from "./model.js";
-import { MONTE_CARLO_ENGINE_VERSION, monteCarlo } from "./monte-carlo.js";
+import { monteCarlo } from "./monte-carlo.js";
 import { WALK_FORWARD_POLICY_VERSION, selectWalkForwardCandidate } from "./walk-forward.js";
 import { auditTradeFees } from "./fee-audit.js";
 

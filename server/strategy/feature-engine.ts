@@ -4,12 +4,15 @@ import { calculateIndicator, indicatorRegistry, type FeatureSeries, validateIndi
 
 export type FeatureRequest = { indicator: string; parameters?: Record<string, unknown>; timeframe: string; output?: string };
 type Frame = { candles: Candle[]; features: Map<string, FeatureSeries> };
+export type FeatureDataSource = {
+  verificationRange(symbol: string, timeframe: string, start: Date, end: Date): Candle[];
+};
 const key = (id: string, parameters: Record<string, unknown>) => `${id}:${JSON.stringify(Object.entries(parameters).sort(([a], [b]) => a.localeCompare(b)))}`;
 
 /** Point-in-time feature store. Every frame contains only complete, closed candles. */
 export class FeatureEngine {
   private frames = new Map<string, Frame>();
-  constructor(readonly symbol: string, readonly start: Date, readonly end: Date, private readonly source = candleRepository) {}
+  constructor(readonly symbol: string, readonly start: Date, readonly end: Date, private readonly source: FeatureDataSource = candleRepository) {}
   load(timeframes: string[]) {
     for (const timeframe of new Set(timeframes)) {
       const candles = this.source.verificationRange(this.symbol, timeframe, this.start, this.end);
@@ -31,7 +34,7 @@ export class FeatureEngine {
   latestIndex(timeframe: string, asOf: Date) {
     const frame = this.frames.get(timeframe);
     if (!frame) throw new Error(`Timeframe ${timeframe} is not loaded`);
-    let lo = 0, hi = frame.candles.length - 1, answer = -1, target = asOf.getTime();
+    let lo = 0, hi = frame.candles.length - 1, answer = -1; const target = asOf.getTime();
     while (lo <= hi) { const mid = (lo + hi) >> 1; if (frame.candles[mid].closeTime.getTime() <= target) { answer = mid; lo = mid + 1; } else hi = mid - 1; }
     return answer;
   }

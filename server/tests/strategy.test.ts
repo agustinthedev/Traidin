@@ -1,6 +1,7 @@
+/* eslint-disable @typescript-eslint/no-explicit-any -- Narrow repository doubles and fixture payloads intentionally model partial runtime data. */
 import { describe, expect, it } from "vitest";
 import { evaluateCondition } from "../strategy/condition-engine.js";
-import { FeatureEngine } from "../strategy/feature-engine.js";
+import { FeatureEngine, type FeatureDataSource } from "../strategy/feature-engine.js";
 import { calculateIndicator, indicatorRegistry } from "../strategy/indicators.js";
 import { configurationDiff } from "../api/routes.js";
 import { candle } from "./fixtures.js";
@@ -51,7 +52,7 @@ describe("point-in-time multi-timeframe safety", () => {
   it("selects the most recent closed higher-timeframe candle, never a future one", () => {
     const daily = [candle(Date.UTC(2026, 0, 1), { timeframe: "1d", closeTime: new Date(Date.UTC(2026, 0, 1, 23, 59, 59, 999)), close: "100" }), candle(Date.UTC(2026, 0, 2), { timeframe: "1d", closeTime: new Date(Date.UTC(2026, 0, 2, 23, 59, 59, 999)), close: "200" })];
     const source = { verificationRange: (_symbol: string, timeframe: string) => timeframe === "1d" ? daily : frame };
-    const engine = new FeatureEngine("BTCUSDT", new Date(Date.UTC(2026,0,1)), new Date(Date.UTC(2026,0,3)), source as any).load(["1m", "1d"]);
+    const engine = new FeatureEngine("BTCUSDT", new Date(Date.UTC(2026,0,1)), new Date(Date.UTC(2026,0,3)), source as FeatureDataSource).load(["1m", "1d"]);
     expect(engine.price("close", "1d", new Date(Date.UTC(2026, 0, 2, 12)))).toBe(100);
     expect(engine.price("close", "1d", new Date(Date.UTC(2026, 0, 3)))).toBe(200);
     expect(engine.getLatestClosedCandle("1d", new Date(Date.UTC(2026, 0, 2, 12)))?.close).toBe("100");
@@ -59,14 +60,14 @@ describe("point-in-time multi-timeframe safety", () => {
   });
   it("evaluates nested AND/OR without leaking unavailable warmup features", () => {
     const source = { verificationRange: () => frame };
-    const engine = new FeatureEngine("BTCUSDT", frame[0].openTime, frame.at(-1)!.closeTime, source as any).load(["1m"]);
+    const engine = new FeatureEngine("BTCUSDT", frame[0].openTime, frame.at(-1)!.closeTime, source as FeatureDataSource).load(["1m"]);
     const at = frame.at(-1)!.closeTime;
     expect(evaluateCondition({ type: "group", operator: "AND", children: [{ left: { type: "indicator", indicator: "ema", parameters: { period: 5 }, timeframe: "1m" }, operator: ">", right: { type: "constant", value: 100 } }, { type: "group", operator: "OR", children: [{ left: { type: "indicator", indicator: "rsi", parameters: { period: 14 }, timeframe: "1m" }, operator: ">", right: { type: "constant", value: 50 } }] }] }, engine, at).passed).toBe(true);
   });
   it("keeps a 15m trigger from reading an open 1h confirmation candle", () => {
     const hourly = [candle(Date.UTC(2026, 0, 1, 0), { timeframe: "1h", closeTime: new Date(Date.UTC(2026, 0, 1, 0, 59, 59, 999)), close: "100" }), candle(Date.UTC(2026, 0, 1, 1), { timeframe: "1h", closeTime: new Date(Date.UTC(2026, 0, 1, 1, 59, 59, 999)), close: "200" })];
     const trigger = [candle(Date.UTC(2026, 0, 1, 0, 45), { timeframe: "15m", closeTime: new Date(Date.UTC(2026, 0, 1, 1, 0)), close: "1" })];
-    const source = { verificationRange: (_symbol: string, timeframe: string) => timeframe === "1h" ? hourly : trigger }, engine = new FeatureEngine("BTCUSDT", trigger[0].openTime, trigger[0].closeTime, source as any).load(["15m", "1h"]);
+    const source = { verificationRange: (_symbol: string, timeframe: string) => timeframe === "1h" ? hourly : trigger }, engine = new FeatureEngine("BTCUSDT", trigger[0].openTime, trigger[0].closeTime, source as FeatureDataSource).load(["15m", "1h"]);
     expect(engine.getLatestClosedCandle("1h", new Date(Date.UTC(2026, 0, 1, 1, 15)))?.close).toBe("100");
     expect(engine.getLatestClosedCandle("1h", new Date(Date.UTC(2026, 0, 1, 2)))?.close).toBe("200");
   });
