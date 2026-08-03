@@ -3,6 +3,7 @@ import { strategyConfigSchema } from "../strategy/model.js";
 import { verificationMetrics } from "../strategy/metrics.js";
 import { monteCarlo } from "../strategy/monte-carlo.js";
 import { selectWalkForwardCandidate } from "../strategy/walk-forward.js";
+import { auditTradeFees } from "../strategy/fee-audit.js";
 import type { SimTrade } from "../strategy/simulation.js";
 
 const trade = (grossPnl: number, fees: number, fundingPnl: number, netRMultiple: number): SimTrade => ({
@@ -39,5 +40,24 @@ describe("verification accounting and Monte Carlo", () => {
     ]);
     expect(result.selected).toBeNull();
     expect(result.candidates.map((candidate) => candidate.eligibility.reasons.length)).toEqual([1, 1]);
+  });
+
+  it("reconciles maker/taker fees from fill notional without leverage double counting", () => {
+    const costs = { makerFeePct: .02, takerFeePct: .05 };
+    const makeTrade = (entryFeeType: "MAKER" | "TAKER", exitFeeType: "MAKER" | "TAKER"): SimTrade => ({ ...trade(1, 0, 0, 1), entryPrice: "100", exitPrice: "110", quantity: "2", fees: String(100 * 2 * (entryFeeType === "MAKER" ? .0002 : .0005) + 110 * 2 * (exitFeeType === "MAKER" ? .0002 : .0005)), details: { entryFee: String(100 * 2 * (entryFeeType === "MAKER" ? .0002 : .0005)), exitFee: String(110 * 2 * (exitFeeType === "MAKER" ? .0002 : .0005)), entryFeeType, exitFeeType, entryFeeRatePct: entryFeeType === "MAKER" ? .02 : .05, exitFeeRatePct: exitFeeType === "MAKER" ? .02 : .05 } });
+    for (const [entry, exit] of [["MAKER", "MAKER"], ["TAKER", "TAKER"], ["TAKER", "MAKER"], ["MAKER", "TAKER"]] as Array<["MAKER" | "TAKER", "MAKER" | "TAKER"]>) {
+      const result = auditTradeFees([makeTrade(entry, exit)], costs);
+      expect(result.status).toBe("PASS");
+      expect(result.totalTurnover).toBe(420);
+    }
+  });
+
+  it("reconciles a large export and exposes turnover-based effective fee rate", () => {
+    const rows = Array.from({ length: 1_001 }, () => trade(1, 0.1, 0, 1));
+    const result = auditTradeFees(rows, { makerFeePct: .02, takerFeePct: .05 });
+    expect(result.tradeCount).toBe(1_001);
+    expect(result.status).toBe("PASS");
+    expect(result.feeDifference).toBeCloseTo(0);
+    expect(result.effectiveFeeRate).toBeGreaterThan(0);
   });
 });
