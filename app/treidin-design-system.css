@@ -47,12 +47,13 @@ button:disabled { cursor:not-allowed; opacity:.55; }
 .group-options { gap:12px; padding:12px 16px; border-bottom-color:var(--border-subtle); background:var(--surface-secondary); color:var(--text-secondary); font:600 11px var(--sans); letter-spacing:0; }
 .group-options select,.condition-row select,.condition-row input,.exit-condition-row select,.exit-condition-row input { height:36px; padding:0 10px; border:1px solid var(--border-default); border-radius:9px; background:var(--background-secondary); color:var(--text-primary); font:12px var(--sans); }
 .group-options select { min-width:72px; }
-.condition-head { padding:10px 16px; border-bottom-color:var(--border-subtle); background:var(--surface-primary); color:var(--text-muted); font:650 10px var(--sans); letter-spacing:.075em; }
-.condition-row { gap:10px; padding:10px 16px; border-bottom-color:var(--border-subtle); background:var(--surface-primary); }
+.condition-head { grid-template-columns:88px minmax(135px,1fr) 130px minmax(205px,1.3fr) 32px; padding:10px 16px; border-bottom-color:var(--border-subtle); background:var(--surface-primary); color:var(--text-muted); font:650 10px var(--sans); letter-spacing:.075em; }
+.condition-row { grid-template-columns:88px minmax(135px,1fr) 130px minmax(205px,1.3fr) 32px; gap:10px; padding:10px 16px; border-bottom-color:var(--border-subtle); background:var(--surface-primary); }
 .condition-row > div { gap:8px; }
 .condition-row input { width:68px; }
 .condition-row > button,.exit-condition-row > button { width:32px; height:32px; border:1px solid rgba(255,100,108,.3); border-radius:9px; background:rgba(255,100,108,.09); color:var(--danger); font:600 18px/1 var(--sans); }
 .exit-condition-row { grid-template-columns:88px minmax(140px,1fr) 60px 130px 90px 32px; gap:10px; padding:10px 16px; border-bottom-color:var(--border-subtle); }
+@media (max-width:760px) { .condition-head { display:none; }.condition-row,.exit-condition-row { grid-template-columns:1fr; }.condition-row > button,.exit-condition-row > button { justify-self:end; } }
 .builder-actions { gap:10px; padding:14px 16px; background:var(--surface-secondary); }
 .builder-actions button { height:36px; padding:0 13px; border:1px solid rgba(183,255,42,.38); border-radius:10px; background:var(--accent-primary); color:#182000; font:700 11px var(--sans); letter-spacing:.02em; }
 .builder-actions button:hover { background:#c5ff4b; transform:translateY(-1px); }
