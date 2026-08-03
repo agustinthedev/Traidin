@@ -669,7 +669,7 @@ tr:hover td {
 .replay-controls label { display: inline-flex; align-items: center; gap: 4px; }
 .replay-controls button { margin-left: auto; border: 1px solid #175eb5; background: #0d3f7e; color: #dbeaff; font: 8px var(--mono); letter-spacing: .08em; }
 .run-actions { white-space: nowrap; }
-.run-actions button { margin-right: 5px; }
+.run-actions button, .run-actions .button-like { margin-right: 5px; vertical-align: middle; }
 .run-actions .cancel { border-color: #6a2831; background: #200b0e; color: #ff8290; }
 .reproducibility-status { display: flex; flex-wrap: wrap; align-items: center; gap: 9px; padding: 9px 12px; border-top: 1px solid #202020; color: #a6a6a6; font: 9px var(--mono); }
 .reproducibility-status button { margin-left: auto; border: 1px solid #175eb5; background: #0d3f7e; color: #dbeaff; font: 8px var(--mono); letter-spacing: .08em; }
