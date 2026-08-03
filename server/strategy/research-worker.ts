@@ -1,4 +1,5 @@
 import { FeatureEngine } from "./feature-engine.js";
+import { indicatorRegistry } from "./indicators.js";
 import { verificationMetrics } from "./metrics.js";
 import { canonicalJson, researchRunSchema, strategyConfigSchema, type ResearchRunInput, type StrategyConfig } from "./model.js";
 import { normalizedCandidateHash, complexityOf } from "./research-normalization.js";
@@ -8,7 +9,7 @@ import { dataFingerprint } from "./verification-worker.js";
 import { simulate } from "./simulation.js";
 import { createHash } from "node:crypto";
 
-export const RESEARCH_ENGINE_VERSION = "2026.09.configurable-families.1";
+export const RESEARCH_ENGINE_VERSION = "2026.09.registry-indicators.1";
 export const RESEARCH_SPLITTER_VERSION = "2026.08.chronological.1";
 
 type Periods = { is: { start: Date; end: Date }; oos: { start: Date; end: Date }; holdout: { start: Date; end: Date } };
@@ -27,19 +28,27 @@ export function splitResearchPeriod(input: ResearchRunInput): Periods {
 }
 function seeded(seed: number) { let value = seed >>> 0; return () => ((value = (value * 1664525 + 1013904223) >>> 0) / 2 ** 32); }
 function choice<T>(random: () => number, values: readonly T[]) { return values[Math.floor(random() * values.length)]!; }
-function candidateConfig(input: ResearchRunInput, index: number): { config: StrategyConfig; family: string; rawAst: Record<string, unknown> } {
+const priceScaleIndicators = new Set(["sma", "ema", "wma", "vwma", "supertrend", "bollinger", "keltner", "highest_high", "lowest_low", "donchian", "swing_high", "swing_low"]);
+const binaryIndicators = new Set(["inside_bar", "outside_bar", "donchian_breakout", "is_weekend", "is_month_start", "is_month_end"]);
+function parametersFor(indicator: string, random: () => number) { return Object.fromEntries(Object.entries(indicatorRegistry[indicator]!.parameters).map(([name, parameter]) => { const defaults = [parameter.min, parameter.default, parameter.max].filter((value, index, values) => values.indexOf(value) === index); const value = choice(random, defaults); return [name, parameter.type === "integer" ? Math.round(value) : value]; })); }
+function thresholdFor(indicator: string, output: string, random: () => number) {
+  if (["rsi", "stochastic", "stochastic_rsi", "mfi", "percentile_rank", "volatility_percentile"].includes(indicator)) return choice(random, [30, 40, 50, 60, 70]);
+  if (indicator === "williams_r") return choice(random, [-70, -60, -50, -40, -30]);
+  if (indicator === "cci") return choice(random, [-100, -50, 0, 50, 100]);
+  if (output.includes("zscore")) return choice(random, [-1, -.5, 0, .5, 1]);
+  if (output.includes("ratio") || output.includes("relative") || output.includes("percent") || output.includes("position")) return choice(random, [.25, .5, .75, 1, 1.25]);
+  if (["hour_utc", "day_of_week", "month_of_year", "quarter_of_year", "week_of_year"].includes(indicator)) return choice(random, [1, 3, 6, 12, 18]);
+  return 0;
+}
+export function candidateConfig(input: ResearchRunInput, index: number): { config: StrategyConfig; family: string; rawAst: Record<string, unknown> } {
   const random = seeded(input.randomSeed + index * 97); const timeframe = input.triggerTimeframe; const direction = input.directions === "LONG" ? "LONG_ONLY" : input.directions === "SHORT" ? "SHORT_ONLY" : "LONG_AND_SHORT";
   const base = { exchange: "BINANCE" as const, market: "BINANCE_USDM_FUTURES" as const, symbols: [input.symbol], triggerTimeframe: timeframe, executionTimeframe: input.executionTimeframe, requiredTimeframes: [...new Set([timeframe, input.executionTimeframe])], directions: direction, stop: { type: "PERCENTAGE" as const, percentage: choice(random, [1, 1.5, 2, 3]) }, takeProfit: { type: "R_MULTIPLE" as const, multiple: choice(random, [1.25, 1.5, 2, 3]) }, sizing: { type: "FIXED_RISK" as const, riskPct: 1 }, leverage: { fixed: 1, maximum: 1, isolated: true }, costs: { makerFeePct: .02, takerFeePct: .04, entryFeeType: "TAKER" as const, exitFeeType: "TAKER" as const, slippageBps: 2, fundingMode: "NONE" as const, fixedFundingPct: 0, fillModel: "NEXT_OPEN" as const, sameBarPolicy: "WORST_CASE" as const } };
-  const emaFast = choice(random, [10, 20, 30, 50]), emaSlow = choice(random, [50, 100, 200]), rsiPeriod = choice(random, [7, 14, 21]), threshold = choice(random, [30, 40, 50, 60, 70]);
-  const emaCross = { left: { type: "indicator" as const, indicator: "ema", parameters: { period: Math.min(emaFast, emaSlow), source: "close" }, timeframe }, operator: "crosses_above" as const, right: { type: "indicator" as const, indicator: "ema", parameters: { period: Math.max(emaFast, emaSlow), source: "close" }, timeframe } };
-  const rsi = { left: { type: "indicator" as const, indicator: "rsi", parameters: { period: rsiPeriod, source: "close" }, timeframe }, operator: ">" as const, right: { type: "constant" as const, value: threshold } };
-  const reverse = { ...emaCross, operator: "crosses_below" as const };
-  const allowsEma = input.allowedIndicators.includes("ema"), allowsRsi = input.allowedIndicators.includes("rsi"), useRsi = allowsRsi && (!allowsEma || random() > .35);
-  const reverseRsi = { ...rsi, operator: "<" as const, right: { type: "constant" as const, value: 100 - threshold } };
-  const long = allowsEma ? useRsi ? { type: "group" as const, operator: "AND" as const, children: [emaCross, rsi] } : emaCross : rsi;
-  const short = allowsEma ? useRsi ? { type: "group" as const, operator: "AND" as const, children: [reverse, reverseRsi] } : reverse : reverseRsi;
+  const indicator = input.allowedIndicators[index % input.allowedIndicators.length]!, definition = indicatorRegistry[indicator]!, parameters = parametersFor(indicator, random), output = choice(random, definition.outputs), reference = { type: "indicator" as const, indicator, parameters, timeframe, output };
+  const threshold = thresholdFor(indicator, output, random);
+  const long = priceScaleIndicators.has(indicator) ? { left: { type: "price" as const, field: "close" as const, timeframe }, operator: "crosses_above" as const, right: reference } : binaryIndicators.has(indicator) ? { left: reference, operator: "==" as const, right: { type: "constant" as const, value: 1 } } : { left: reference, operator: ">" as const, right: { type: "constant" as const, value: threshold } };
+  const short = priceScaleIndicators.has(indicator) ? { left: { type: "price" as const, field: "close" as const, timeframe }, operator: "crosses_below" as const, right: reference } : binaryIndicators.has(indicator) ? { left: reference, operator: "==" as const, right: { type: "constant" as const, value: 0 } } : { left: reference, operator: "<" as const, right: { type: "constant" as const, value: threshold } };
   const config = strategyConfigSchema.parse({ ...base, longEntry: direction === "SHORT_ONLY" ? undefined : long, shortEntry: direction === "LONG_ONLY" ? undefined : short });
-  return { config, family: allowsEma ? useRsi ? "EMA_CROSS_RSI" : "EMA_CROSS" : "RSI_THRESHOLD", rawAst: { longEntry: config.longEntry, shortEntry: config.shortEntry, stop: config.stop, takeProfit: config.takeProfit, sizing: config.sizing } };
+  return { config, family: indicator.toUpperCase(), rawAst: { longEntry: config.longEntry, shortEntry: config.shortEntry, stop: config.stop, takeProfit: config.takeProfit, sizing: config.sizing } };
 }
 function metricSummary(simulated: Awaited<ReturnType<typeof simulate>>) { const metrics = verificationMetrics(simulated.trades, simulated.equity), initialEquity = simulated.equity[0]?.balance ?? 0, finalEquity = simulated.equity.at(-1)?.balance ?? initialEquity, interval = Math.max(1, Math.ceil(simulated.equity.length / 200)), equity = simulated.equity.filter((_, index) => index % interval === 0); if (simulated.equity.length && equity.at(-1) !== simulated.equity.at(-1)) equity.push(simulated.equity.at(-1)!); return { trades: metrics.tradeCount, netProfit: metrics.netProfit, return: metrics.netProfitPct, profitFactor: metrics.profitFactor, expectancy: metrics.expectancy, maxDrawdownPct: metrics.maxDrawdownPct, fees: metrics.totalFees, initialEquity, finalEquity, equity }; }
 function passes(metrics: ReturnType<typeof metricSummary>, input: ResearchRunInput) { return Number(metrics.trades) >= input.minTrades && Number(metrics.profitFactor ?? 0) >= input.minProfitFactor && Number(metrics.maxDrawdownPct ?? Infinity) <= input.maxDrawdownPct; }

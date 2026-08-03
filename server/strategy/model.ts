@@ -73,7 +73,7 @@ export const researchRunSchema = z.object({
   name: z.string().min(2).max(120), description: z.string().max(4000).default(""), symbol: z.string().regex(/^[A-Z0-9_]+$/).transform((value) => value.toUpperCase()),
   directions: z.enum(["LONG", "SHORT", "LONG_AND_SHORT"]).default("LONG_AND_SHORT"), triggerTimeframe: timeframe, executionTimeframe: timeframe.default("1m"), initialBalance: z.number().positive().default(10_000), randomSeed: z.number().int().min(0).max(2_147_483_647).default(42), candidateBudget: z.number().int().min(1).max(1_000).default(100), maxRetainedCandidates: z.number().int().min(1).max(500).default(30), maximumHoldoutCandidates: z.number().int().min(1).max(200).default(15),
   period: z.object({ mode: z.enum(["AUTOMATIC", "MANUAL"]).default("AUTOMATIC"), policy: z.enum(["BALANCED", "LOW_FREQUENCY", "INTRADAY"]).default("BALANCED"), start: z.coerce.date(), end: z.coerce.date(), isStart: z.coerce.date().optional(), isEnd: z.coerce.date().optional(), oosStart: z.coerce.date().optional(), oosEnd: z.coerce.date().optional(), holdoutStart: z.coerce.date().optional(), holdoutEnd: z.coerce.date().optional() }),
-  allowedIndicators: z.array(z.enum(["ema", "rsi"])).min(1).default(["ema", "rsi"]), minTrades: z.number().int().min(0).default(20), minProfitFactor: z.number().min(0).default(1.05), maxDrawdownPct: z.number().min(0).max(100).default(40),
+  allowedIndicators: z.array(z.string().refine((id) => id in indicatorRegistry, "Unknown indicator")).min(1).default(() => Object.keys(indicatorRegistry)), minTrades: z.number().int().min(0).default(20), minProfitFactor: z.number().min(0).default(1.05), maxDrawdownPct: z.number().min(0).max(100).default(40),
 });
 export type ResearchRunInput = z.infer<typeof researchRunSchema>;
 
