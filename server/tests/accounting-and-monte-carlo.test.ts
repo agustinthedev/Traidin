@@ -4,6 +4,7 @@ import { verificationMetrics } from "../strategy/metrics.js";
 import { monteCarlo } from "../strategy/monte-carlo.js";
 import { selectWalkForwardCandidate } from "../strategy/walk-forward.js";
 import { auditTradeFees } from "../strategy/fee-audit.js";
+import { equityChartDomain } from "../strategy/chart-domain.js";
 import type { SimTrade } from "../strategy/simulation.js";
 
 const trade = (grossPnl: number, fees: number, fundingPnl: number, netRMultiple: number): SimTrade => ({
@@ -59,5 +60,12 @@ describe("verification accounting and Monte Carlo", () => {
     expect(result.status).toBe("PASS");
     expect(result.feeDifference).toBeCloseTo(0);
     expect(result.effectiveFeeRate).toBeGreaterThan(0);
+  });
+
+  it("keeps no-debt chart domains at or above zero", () => {
+    expect(equityChartDomain([100, 120, 80]).min).toBeGreaterThanOrEqual(0);
+    expect(equityChartDomain([0, 0]).min).toBe(0);
+    expect(equityChartDomain([.0001, .0002]).min).toBe(0);
+    expect(equityChartDomain([-20, 100], true).min).toBeLessThan(0);
   });
 });

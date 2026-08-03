@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import { fmtNum } from "./ui";
+import { equityChartDomain } from "../../server/strategy/chart-domain";
 
 type MonteCarlo = { count: number; model?: string; pathsShown?: number; paths?: number[][]; percentilePaths?: { p05: number[]; median: number[]; p95: number[] }; initialBalance: number; p05FinalEquity: number; medianFinalEquity: number; p95FinalEquity: number; probabilityOfProfit: number; ruinedPathCount?: number; ruinProbabilityPct?: number };
 
@@ -15,7 +16,7 @@ export default function MonteCarloPaths({ data }: { data: MonteCarlo }) {
       canvas.width = width * ratio; canvas.height = height * ratio;
       const context = canvas.getContext("2d"); if (!context) return;
       context.scale(ratio, ratio); context.fillStyle = "#080808"; context.fillRect(0, 0, width, height);
-      const values = [...paths.flat(), ...band.p05, ...band.median, ...band.p95, data.initialBalance].filter(Number.isFinite), low = Math.min(...values), high = Math.max(...values), padding = Math.max((high - low) * .08, 1), min = low - padding, max = high + padding;
+      const values = [...paths.flat(), ...band.p05, ...band.median, ...band.p95, data.initialBalance].filter(Number.isFinite), domain = equityChartDomain(values), min = domain.min, max = domain.max;
       const x = (index: number) => 42 + index / Math.max(1, band.median.length - 1) * (width - 58), y = (value: number) => 18 + (max - value) / Math.max(1e-9, max - min) * (height - 42);
       context.strokeStyle = "rgba(255,255,255,.07)"; context.lineWidth = 1;
       for (let i = 0; i < 5; i++) { const lineY = 18 + i / 4 * (height - 42); context.beginPath(); context.moveTo(42, lineY); context.lineTo(width - 16, lineY); context.stroke(); context.fillStyle = "#69737f"; context.font = "9px monospace"; context.fillText(fmtNum(max - i / 4 * (max - min), 0), 2, lineY + 3); }
