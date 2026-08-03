@@ -13,6 +13,10 @@ import { WALK_FORWARD_POLICY_VERSION, selectWalkForwardCandidate } from "./walk-
 import { auditTradeFees } from "./fee-audit.js";
 
 export const SIMULATION_ENGINE_VERSION = "2026.09.accounting.1";
+export const WALK_FORWARD_ENGINE_VERSION = "2026.09.eligible-selection.1";
+export const ROBUSTNESS_ENGINE_VERSION = "2026.09.accounting.1";
+export const STRESS_ENGINE_VERSION = "2026.09.accounting.1";
+export const REPORT_ENGINE_VERSION = "2026.09.accounting.1";
 function closedWindow(start: Date, end: Date, timeframe: string) {
   const effectiveStart = alignCeil(start, timeframe);
   const endingBucket = bucketOpen(end, timeframe);
