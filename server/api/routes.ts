@@ -32,7 +32,8 @@ import { tradeCsvHeader, tradeCsvLine, VERIFICATION_EXPORT_VERSION } from "../st
 import { auditVerificationRun } from "../strategy/verification-audit.js";
 import { configurationHash, createRunSchema, createStrategySchema, strategyConfigSchema, strategyWarmupBars, validateStrategyConfiguration } from "../strategy/model.js";
 import { strategyRepository, verificationRepository } from "../strategy/repository.js";
-import { dataFingerprint, historicalAvailability, MONTE_CARLO_ENGINE_VERSION, SIMULATION_ENGINE_VERSION } from "../strategy/verification-worker.js";
+import { dataFingerprint, historicalAvailability, SIMULATION_ENGINE_VERSION } from "../strategy/verification-worker.js";
+import { MONTE_CARLO_ENGINE_VERSION } from "../strategy/monte-carlo.js";
 import { METRICS_ENGINE_VERSION } from "../strategy/metrics.js";
 
 const date = z.coerce.date();

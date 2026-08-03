@@ -1,6 +1,7 @@
 import { verificationRepository } from "../server/strategy/repository.js";
 import { auditVerificationRun } from "../server/strategy/verification-audit.js";
-import { SIMULATION_ENGINE_VERSION, MONTE_CARLO_ENGINE_VERSION } from "../server/strategy/verification-worker.js";
+import { SIMULATION_ENGINE_VERSION } from "../server/strategy/verification-worker.js";
+import { MONTE_CARLO_ENGINE_VERSION } from "../server/strategy/monte-carlo.js";
 import { METRICS_ENGINE_VERSION } from "../server/strategy/metrics.js";
 import { VERIFICATION_EXPORT_VERSION } from "../server/strategy/export.js";
 import { sqlite } from "../server/db/database.js";
