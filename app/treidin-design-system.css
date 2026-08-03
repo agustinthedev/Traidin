@@ -53,4 +53,7 @@ button:disabled { cursor:not-allowed; opacity:.55; }
 .condition-row input { width:68px; }
 .condition-row > button,.exit-condition-row > button { width:32px; height:32px; border:1px solid rgba(255,100,108,.3); border-radius:9px; background:rgba(255,100,108,.09); color:var(--danger); font:600 18px/1 var(--sans); }
 .exit-condition-row { gap:10px; padding:10px 16px; border-bottom-color:var(--border-subtle); }
+.builder-actions { gap:10px; padding:14px 16px; background:var(--surface-secondary); }
+.builder-actions button { height:36px; padding:0 13px; border:1px solid rgba(183,255,42,.38); border-radius:10px; background:var(--accent-primary); color:#182000; font:700 11px var(--sans); letter-spacing:.02em; }
+.builder-actions button:hover { background:#c5ff4b; transform:translateY(-1px); }
 @media (prefers-reduced-motion:reduce) { *,*::before,*::after { scroll-behavior:auto !important; transition-duration:.01ms !important; animation-duration:.01ms !important; animation-iteration-count:1 !important; } }
