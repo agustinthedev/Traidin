@@ -33,7 +33,7 @@ const app = Fastify({
     ],
   },
 });
-await app.register(cors, { origin: true });
+await app.register(cors, { origin: true, methods: ["GET", "HEAD", "POST", "DELETE"] });
 await registerRoutes(app);
 async function start() {
   const savedSettings =
