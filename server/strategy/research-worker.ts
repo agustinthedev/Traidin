@@ -55,7 +55,7 @@ function passes(metrics: ReturnType<typeof metricSummary>, input: ResearchRunInp
 
 export class ResearchWorker {
   private timer: NodeJS.Timeout | null = null; private running = false;
-  async start() { await researchRepository.recoverInterrupted(); this.timer = setInterval(() => void this.runOnce(), 500); await this.runOnce(); }
+  async start() { await researchRepository.recoverInterrupted(); this.timer = setInterval(() => void this.runOnce(), 500); void this.runOnce(); }
   stop() { if (this.timer) clearInterval(this.timer); this.timer = null; }
   async runOnce() { if (this.running) return; const run = await researchRepository.claimNext(); if (!run) return; this.running = true; try { await this.execute(run); } catch (error) { await researchRepository.update(run.id, { status: "FAILED", health: "UNHEALTHY", stage: "FAILED", errorCode: "RESEARCH_FAILED", errorMessage: error instanceof Error ? error.message : "Unknown research error", completedAt: new Date() }); await researchRepository.log(run.id, "ERROR", "FAILED", "RUN_FAILED", error instanceof Error ? error.message : "Unknown research error"); } finally { this.running = false; } }
   private async execute(run: ReturnType<typeof researchRepository.get> extends infer T ? NonNullable<T> : never) {
