@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { notifyToast } from "./toast";
 export const API = process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:4100";
 // API resources are heterogeneous JSON records validated by backend schemas.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -28,16 +29,29 @@ export const localInput = (time: number) =>
     .toISOString()
     .slice(0, 16);
 export async function apiJson(path: string, init?: RequestInit) {
-  const response = await fetch(`${API}${path}`, {
-    ...init,
-    headers: {
-      ...(init?.body ? { "Content-Type": "application/json" } : {}),
-      ...(init?.headers ?? {}),
-    },
-  });
-  if (!response.ok)
-    throw new Error((await response.text()) || `HTTP ${response.status}`);
-  return response.json();
+  const method = (init?.method ?? "GET").toUpperCase();
+  const isAction = !["GET", "HEAD"].includes(method);
+  const toastId = isAction ? notifyToast({ tone: "loading", title: "Processing action", message: "Please wait…" }) : undefined;
+  try {
+    const response = await fetch(`${API}${path}`, {
+      ...init,
+      headers: {
+        ...(init?.body ? { "Content-Type": "application/json" } : {}),
+        ...(init?.headers ?? {}),
+      },
+    });
+    if (!response.ok) throw new Error((await response.text()) || `HTTP ${response.status}`);
+    const result = await response.json();
+    if (toastId) notifyToast({ id: toastId, tone: "success", title: "Action completed", message: "The changes were saved successfully." });
+    return result;
+  } catch (error) {
+    if (toastId) notifyToast({ id: toastId, tone: "error", title: "Action failed", message: apiErrorMessage(error) });
+    throw error;
+  }
+}
+function apiErrorMessage(error: unknown) {
+  const raw = error instanceof Error ? error.message : "Unexpected error";
+  try { const parsed = JSON.parse(raw); return String(parsed.message ?? raw).slice(0, 220); } catch { return raw.slice(0, 220); }
 }
 export function StatusDot({ state }: { state: string }) {
   return <i className={`status-dot ${state.toLowerCase()}`} />;

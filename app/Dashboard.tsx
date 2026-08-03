@@ -20,6 +20,8 @@ import {
 } from "./dashboard/Panels";
 import Settings from "./dashboard/SettingsCompat";
 import CandlestickChart from "./dashboard/CandlestickChart";
+import StrategyVerification from "./dashboard/StrategyVerification";
+import { ToastViewport } from "./dashboard/toast";
 
 const NAV = [
   "Overview",
@@ -31,6 +33,8 @@ const NAV = [
   "Database",
   "System Events",
   "Settings",
+  "Strategies",
+  "Strategy Verifier",
 ] as const;
 type Tab = (typeof NAV)[number];
 export default function Dashboard() {
@@ -97,6 +101,7 @@ export default function Dashboard() {
   ).length;
   return (
     <main className="terminal-shell">
+      <ToastViewport />
       <header className="topbar">
         <div className="brand">
           <img className="brand-mark" src="/treidin-mark.png" alt="Treidin" />
@@ -179,6 +184,8 @@ export default function Dashboard() {
           {tab === "Settings" && (
             <Settings config={status?.config} health={health} />
           )}
+          {tab === "Strategies" && <StrategyVerification mode="builder" symbols={status?.config?.symbols ?? []} refreshShell={refresh} />}
+          {tab === "Strategy Verifier" && <StrategyVerification mode="verifier" symbols={status?.config?.symbols ?? []} refreshShell={refresh} />}
         </section>
       </div>
     </main>

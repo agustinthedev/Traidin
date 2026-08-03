@@ -131,6 +131,13 @@ export class CandleRepository {
         ) as SqlRow[]
     ).map(mapCandle);
   }
+  verificationRange(symbol: string, timeframe: string, start: Date, end: Date) {
+    return (
+      sqlite.reader.prepare(
+        "SELECT * FROM candles WHERE symbol=? AND timeframe=? AND open_time BETWEEN ? AND ? AND is_closed=1 AND is_complete=1 ORDER BY open_time ASC",
+      ).all(symbol, timeframe, start.getTime(), end.getTime()) as SqlRow[]
+    ).map(mapCandle);
+  }
   recent(symbol: string, timeframe = "1m", limit = 100, before?: Date) {
     return (
       sqlite.reader
@@ -614,6 +621,10 @@ export const metadataRepository = {
       filters: JSON.parse(String(r.filters_json)),
       updatedAt: date(r.updated_at),
     }));
+  },
+  get(symbol: string): (SqlRow & { filters: unknown; updatedAt: Date }) | null {
+    const row = sqlite.reader.prepare("SELECT * FROM symbol_metadata WHERE symbol=?").get(symbol) as SqlRow | undefined;
+    return row ? { ...row, filters: JSON.parse(String(row.filters_json)), updatedAt: date(row.updated_at) } : null;
   },
 };
 

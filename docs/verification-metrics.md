@@ -1,0 +1,9 @@
+# Verification Metrics
+
+Core metrics use realised net trade P&L and the closed-balance equity curve. `netProfit` is final balance minus initial balance; `profitFactor` is gross profitable P&L divided by absolute gross losing P&L; `expectancy` is average net P&L per trade; `winRate` is profitable trades divided by all completed trades.
+
+Maximum drawdown is peak-to-trough closed balance and `longestUnderwaterMs` is the longest duration under the prior high-water mark. Sharpe is computed from per-trade returns, annualized with `sqrt(365)`; it is intentionally labelled as a trade-return convention, not a daily-return Sharpe.
+
+Sortino uses the same per-trade return convention with zero as the minimum acceptable return and root-mean-square downside deviation. Calmar is annualized closed-balance return divided by absolute maximum closed-balance drawdown. Omega uses zero as its threshold and is the sum of positive trade P&L divided by absolute negative trade P&L. Ulcer Index is the root mean square of closed-balance drawdown percentages. Gain-to-pain uses realized gross profit divided by absolute realized gross loss. Holding and streak metrics are calculated only from completed simulated trades.
+
+Execution accounting sums the persisted trade fees, fixed-funding accruals and adverse fill slippage impact. Time in market is the sum of completed position holding time divided by the closed-balance reporting interval. Risk of ruin is a deliberately conservative Bernoulli approximation based on observed win/loss frequency, average win/loss and initial balance measured in average-loss units; it is descriptive, not a liquidation or margin model. The current historical simulator does not model exchange liquidation prices, so liquidation-distance fields remain explicitly unavailable rather than fabricated.
