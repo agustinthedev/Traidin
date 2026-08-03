@@ -6,6 +6,10 @@ export const TIMEFRAMES = ["1m", "5m", "15m", "1h", "4h", "1d", "1w"] as const;
 export const TIMEFRAME_MINUTES: Record<(typeof TIMEFRAMES)[number], number> = { "1m": 1, "5m": 5, "15m": 15, "1h": 60, "4h": 240, "1d": 1440, "1w": 10080 };
 export const StrategyStatus = z.enum(["DRAFT", "READY_FOR_VERIFICATION", "VERIFIED", "VERIFICATION_WARNING", "VERIFICATION_FAILED", "ARCHIVED"]);
 export type StrategyStatus = z.infer<typeof StrategyStatus>;
+export const StrategyOrigin = z.enum(["MANUAL", "STRATEGY_LAB"]);
+export type StrategyOrigin = z.infer<typeof StrategyOrigin>;
+export const StrategyLifecycle = z.enum(["DRAFT", "READY_FOR_DEEP_VERIFICATION", "VERIFIED", "RETIRED"]);
+export type StrategyLifecycle = z.infer<typeof StrategyLifecycle>;
 
 const timeframe = z.enum(TIMEFRAMES);
 const valueRef = z.discriminatedUnion("type", [

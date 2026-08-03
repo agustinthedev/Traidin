@@ -30,7 +30,7 @@ import { intervalMs } from "../domain/intervals.js";
 import { verificationReportPdf } from "../strategy/pdf-report.js";
 import { tradeCsvHeader, tradeCsvLine, VERIFICATION_EXPORT_VERSION } from "../strategy/export.js";
 import { auditVerificationRun, persistedTradeToSimTrade, reconstructedBalanceCurve } from "../strategy/verification-audit.js";
-import { configurationHash, createRunSchema, createStrategySchema, strategyConfigSchema, strategyWarmupBars, validateStrategyConfiguration } from "../strategy/model.js";
+import { configurationHash, createRunSchema, createStrategySchema, StrategyLifecycle, strategyConfigSchema, strategyWarmupBars, validateStrategyConfiguration } from "../strategy/model.js";
 import { strategyRepository, verificationRepository } from "../strategy/repository.js";
 import { compareVerificationRuns } from "../strategy/comparability.js";
 import { dataFingerprint, historicalAvailability, REPORT_ENGINE_VERSION, ROBUSTNESS_ENGINE_VERSION, SIMULATION_ENGINE_VERSION, STRESS_ENGINE_VERSION, WALK_FORWARD_ENGINE_VERSION } from "../strategy/verification-worker.js";
@@ -132,7 +132,18 @@ export async function registerRoutes(app: FastifyInstance) {
   });
   app.get("/api/coverage", async () => candleRepository.coverage());
   app.get("/api/indicators", async () => Object.values(indicatorRegistry));
-  app.get("/api/strategies", async () => strategyRepository.list().map((item) => ({ ...item, versions: strategyRepository.versions(item.id) })));
+  app.get("/api/strategies", async (request) => {
+    const query = z.object({ search: z.string().trim().max(120).optional(), lifecycle: StrategyLifecycle.optional(), origin: z.enum(["MANUAL", "STRATEGY_LAB"]).optional() }).parse(request.query);
+    const search = query.search?.toLocaleLowerCase();
+    return strategyRepository.list().map((item) => {
+      const versions = strategyRepository.versions(item.id);
+      const versionIds = new Set(versions.map((version) => version.id));
+      const runs = verificationRepository.list().filter((run) => versionIds.has(run.strategyVersionId));
+      const latestVersion = versions[0] ?? null;
+      const latestVerification = runs.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())[0] ?? null;
+      return { ...item, versions, versionCount: versions.length, latestVersion, verificationRunsCount: runs.length, latestVerification, warnings: [!versions.length ? "NO_IMMUTABLE_VERSION" : null, !runs.length ? "NO_VERIFICATION" : null, latestVerification?.status === "FAILED" ? "LATEST_VERIFICATION_FAILED" : null, item.lifecycle === "RETIRED" ? "RETIRED" : null].filter(Boolean) };
+    }).filter((item) => (!query.lifecycle || item.lifecycle === query.lifecycle) && (!query.origin || item.origin === query.origin) && (!search || [item.name, item.description, ...item.tags].join(" ").toLocaleLowerCase().includes(search)));
+  });
   app.post("/api/strategies", async (request, reply) => {
     const body = createStrategySchema.parse(request.body);
     const errors = validateStrategyConfiguration(body.configuration); if (errors.length) return reply.code(400).send({ error: "Strategy configuration is invalid", errors });
@@ -141,7 +152,13 @@ export async function registerRoutes(app: FastifyInstance) {
     return reply.code(201).send({ strategy, version });
   });
   app.get("/api/strategies/:id", async (request, reply) => {
-    const { id } = z.object({ id: z.string().uuid() }).parse(request.params); const strategy = strategyRepository.get(id); if (!strategy) return reply.code(404).send({ error: "Strategy not found" }); return { ...strategy, versions: strategyRepository.versions(id) };
+    const { id } = z.object({ id: z.string().uuid() }).parse(request.params); const strategy = strategyRepository.get(id); if (!strategy) return reply.code(404).send({ error: "Strategy not found" }); const versions = strategyRepository.versions(id); const ids = new Set(versions.map((version) => version.id)); const verificationRuns = verificationRepository.list().filter((run) => ids.has(run.strategyVersionId)); return { ...strategy, versions, verificationRuns, research: null, timeline: strategyRepository.events(id) };
+  });
+  app.post("/api/strategies/:id/lifecycle", async (request, reply) => {
+    const { id } = z.object({ id: z.string().uuid() }).parse(request.params); if (!strategyRepository.get(id)) return reply.code(404).send({ error: "Strategy not found" }); const body = z.object({ lifecycle: StrategyLifecycle }).parse(request.body); return strategyRepository.setLifecycle(id, body.lifecycle);
+  });
+  app.post("/api/strategies/:id/retire", async (request, reply) => {
+    const { id } = z.object({ id: z.string().uuid() }).parse(request.params); if (!strategyRepository.get(id)) return reply.code(404).send({ error: "Strategy not found" }); return strategyRepository.archive(id);
   });
   app.post("/api/strategies/:id/versions", async (request, reply) => {
     const { id } = z.object({ id: z.string().uuid() }).parse(request.params); if (!strategyRepository.get(id)) return reply.code(404).send({ error: "Strategy not found" }); const body = z.object({ configuration: strategyConfigSchema, changeNotes: z.string().max(2000).default(""), parentVersionId: z.string().uuid().optional() }).parse(request.body); const errors = validateStrategyConfiguration(body.configuration); if (errors.length) return reply.code(400).send({ error: "Strategy configuration is invalid", errors }); return reply.code(201).send(await strategyRepository.publish(id, body.configuration, configurationHash(body.configuration), INDICATOR_REGISTRY_VERSION, body.changeNotes, body.parentVersionId));
@@ -151,7 +168,7 @@ export async function registerRoutes(app: FastifyInstance) {
   });
   app.get("/api/strategy-versions/:id", async (request, reply) => { const { id } = z.object({ id: z.string().uuid() }).parse(request.params); const version = strategyRepository.version(id); return version ?? reply.code(404).send({ error: "Strategy version not found" }); });
   app.get("/api/strategy-versions/:id/configuration.json", async (request, reply) => { const { id } = z.object({ id: z.string().uuid() }).parse(request.params); const version = strategyRepository.version(id); if (!version) return reply.code(404).send({ error: "Strategy version not found" }); return reply.header("Content-Disposition", `attachment; filename=strategy-version-${id}.json`).type("application/json; charset=utf-8").send({ strategyVersionId: version.id, strategyId: version.strategyId, versionNumber: version.versionNumber, parentVersionId: version.parentVersionId, createdAt: version.createdAt, configurationHash: version.configurationHash, indicatorRegistryVersion: version.indicatorRegistryVersion, verificationStatus: version.verificationStatus, changeNotes: version.changeNotes, configuration: version.configuration }); });
-  app.post("/api/strategy-versions/:id/clone", async (request, reply) => { const { id } = z.object({ id: z.string().uuid() }).parse(request.params); const source = strategyRepository.version(id); if (!source) return reply.code(404).send({ error: "Strategy version not found" }); const sourceStrategy = strategyRepository.get(source.strategyId); if (!sourceStrategy) return reply.code(404).send({ error: "Source strategy not found" }); const body = z.object({ name: z.string().min(2).max(120).optional(), changeNotes: z.string().max(2000).default("Cloned immutable strategy version") }).parse(request.body ?? {}); const strategy = await strategyRepository.create({ name: body.name ?? `${sourceStrategy.name} (clone v${source.versionNumber})`, description: sourceStrategy.description, tags: [...sourceStrategy.tags, "clone"] }); const version = await strategyRepository.publish(strategy.id, source.configuration, source.configurationHash, source.indicatorRegistryVersion, body.changeNotes, source.id); return reply.code(201).send({ strategy, version, clonedFromVersionId: source.id }); });
+  app.post("/api/strategy-versions/:id/clone", async (request, reply) => { const { id } = z.object({ id: z.string().uuid() }).parse(request.params); const source = strategyRepository.version(id); if (!source) return reply.code(404).send({ error: "Strategy version not found" }); const sourceStrategy = strategyRepository.get(source.strategyId); if (!sourceStrategy) return reply.code(404).send({ error: "Source strategy not found" }); const body = z.object({ name: z.string().min(2).max(120).optional(), changeNotes: z.string().max(2000).default("Cloned immutable strategy version") }).parse(request.body ?? {}); const strategy = await strategyRepository.create({ name: body.name ?? `${sourceStrategy.name} (clone v${source.versionNumber})`, description: sourceStrategy.description, tags: [...sourceStrategy.tags, "clone"], origin: sourceStrategy.origin, clonedFromStrategyId: sourceStrategy.id, sourceResearchRunId: sourceStrategy.sourceResearchRunId, sourceCandidateId: sourceStrategy.sourceCandidateId, sourceNormalizedHash: sourceStrategy.sourceNormalizedHash }); const version = await strategyRepository.publish(strategy.id, source.configuration, source.configurationHash, source.indicatorRegistryVersion, body.changeNotes, source.id); return reply.code(201).send({ strategy, version, clonedFromVersionId: source.id }); });
   app.get("/api/strategy-versions/:id/availability", async (request, reply) => { const { id } = z.object({ id: z.string().uuid() }).parse(request.params); const version = strategyRepository.version(id); if (!version) return reply.code(404).send({ error: "Strategy version not found" }); const query = z.object({ symbol, start: date, end: date }).parse(request.query); return availabilityWithWarmup(query.symbol, version.configuration, query.start, query.end); });
   app.post("/api/strategy-versions/:id/dry-validation", async (request, reply) => {
     const { id } = z.object({ id: z.string().uuid() }).parse(request.params), version = strategyRepository.version(id);
