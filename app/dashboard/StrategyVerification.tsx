@@ -2,6 +2,7 @@
 import { useEffect, useMemo, useState } from "react";
 import TradeReplay from "./TradeReplay";
 import EquityDrawdown from "./EquityDrawdown";
+import MonteCarloPaths from "./MonteCarloPaths";
 import { API, PageHead, apiJson, fmtNum } from "./ui";
 
 type Row = Record<string, any>;
@@ -23,6 +24,7 @@ function Report({ report, trades, onClone }: { report: Row; trades: Row[]; onClo
   return <>
     <section className="panel verification-report"><div className="panel-title"><span>REPORT / {report.name}</span><small>{report.configurationHash.slice(0, 12)}</small></div><div className="metric-grid"><Metric label="NET PROFIT" value={fmtNum(metrics.netProfit, 2)} detail={`${fmtNum(metrics.netProfitPct, 2)}%`} /><Metric label="PROFIT FACTOR" value={fmtNum(metrics.profitFactor, 2)} /><Metric label="MAX DRAWDOWN" value={`${fmtNum(metrics.maxDrawdownPct, 2)}%`} /><Metric label="WIN RATE" value={`${fmtNum(metrics.winRate, 1)}%`} /><Metric label="SCORECARD" value={result.scorecard.score} detail={result.scorecard.status} /></div></section>
     <EquityDrawdown equity={result.equityCurve} underwater={metrics.underwater} />
+    {breakdowns.monteCarlo && <MonteCarloPaths data={breakdowns.monteCarlo} />}
     <div className="verification-detail-grid"><section className="panel"><div className="panel-title"><span>SCORECARD</span><small>{result.scorecard.status}</small></div><div className="scorecard-list">{result.scorecard.checks.map((check: Row) => <div key={check.name}><span className={`tag ${check.passed ? "ok" : "failed"}`}>{check.passed ? "PASS" : "FAIL"}</span><span>{check.name}</span></div>)}</div></section><section className="panel"><div className="panel-title"><span>OOS / MONTE CARLO</span><small>SEED {report.randomSeed}</small></div><dl className="report-dl"><dt>OOS trades</dt><dd>{breakdowns.outOfSample.trades}</dd><dt>OOS net P&L</dt><dd>{fmtNum(breakdowns.outOfSample.netProfit, 2)}</dd><dt>OOS profit factor</dt><dd>{fmtNum(breakdowns.outOfSample.profitFactor, 2)}</dd><dt>OOS max drawdown</dt><dd>{fmtNum(breakdowns.outOfSample.maxDrawdownPct, 2)}%</dd><dt>Monte Carlo</dt><dd>{breakdowns.monteCarlo?.count ?? "Not run"}</dd><dt>Probability of profit</dt><dd>{breakdowns.monteCarlo ? `${fmtNum(breakdowns.monteCarlo.probabilityOfProfit, 1)}%` : "—"}</dd></dl></section><section className="panel"><div className="panel-title"><span>EVALUATION FUNNEL</span><small>REJECTION AUDIT</small></div><div className="scorecard-list">{Object.entries(result.funnel).map(([key, value]) => <div key={key}><span>{key.replace(/([A-Z])/g, " $1")}</span><strong>{fmtNum(value, 0)}</strong></div>)}</div></section></div>
     <ScenarioTable title="RISK-ADJUSTED & HOLDING METRICS" rows={[metrics]} columns={["sharpe", "sortino", "calmar", "omega", "ulcerIndex", "gainToPainRatio", "maxConsecutiveWins", "maxConsecutiveLosses", "medianHoldingMs", "averageMaePct", "averageMfePct"]} />
     <ScenarioTable title="EXECUTION ACCOUNTING & EXPOSURE" rows={[metrics]} columns={["totalFees", "totalFunding", "totalSlippageImpact", "timeInMarketPct", "recoveryFactor", "riskOfRuinPct", "annualizedReturnPct"]} />

@@ -655,6 +655,12 @@ tr:hover td {
 .equity-chart-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1px; background: #282828; }
 .equity-chart-grid > div { padding: 8px; background: #090909; color: #777; font: 8px var(--mono); letter-spacing: .08em; }
 .equity-chart { height: 230px; margin-top: 7px; }
+.monte-carlo-paths { margin: 10px 0; }
+.monte-carlo-chart { display: block; width: 100%; height: 390px; background: #080808; }
+.monte-carlo-legend { display: flex; flex-wrap: wrap; gap: 13px; padding: 9px 12px; border-top: 1px solid #202020; color: #99a6b4; font: 9px var(--mono); }
+.monte-carlo-legend span { display: inline-flex; align-items: center; gap: 5px; }
+.monte-carlo-legend i { display: inline-block; width: 14px; height: 2px; }
+.mc-path { background: #769fc4; opacity: .55; }.mc-p05 { background: #ff5c5c; }.mc-median { background: #2dd4bf; }.mc-p95 { background: #58a6ff; }.mc-initial { background: repeating-linear-gradient(90deg, #f5a524 0 5px, transparent 5px 8px); }
 .replay-chart { height: min(68vh, 720px); min-height: 400px; background: #080808; }
 .replay-meta, .replay-legend { display: flex; flex-wrap: wrap; gap: 14px; padding: 9px 12px; color: #a1a1a1; font: 9px var(--mono); letter-spacing: .04em; }
 .replay-meta { border-bottom: 1px solid #282828; background: #0b0b0b; }
@@ -726,6 +732,7 @@ tr:hover td {
 @media (max-width: 1100px) { .strategy-builder { grid-template-columns: 1fr; } .condition-head, .condition-row { grid-template-columns: 56px 1fr 110px 1fr 28px; } }
 @media (max-width: 760px) { .condition-head { display: none; } .condition-row, .exit-condition-row { grid-template-columns: 1fr; } .condition-row > button, .exit-condition-row > button { justify-self: end; } .verification-form { flex-wrap: wrap; } .comparison-controls label { min-width: 100%; } }
 @media (max-width: 700px) { .replay { inset: 8px; } .replay-chart { height: 58vh; min-height: 300px; } }
+@media (max-width: 700px) { .monte-carlo-chart { height: 300px; } }
 
 @media (max-width: 1350px) {
   .metric-grid { grid-template-columns: repeat(4, 1fr); }
