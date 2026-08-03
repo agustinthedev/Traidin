@@ -312,10 +312,12 @@ export function Quality({
   gaps,
   coverage,
   refresh,
+  scanIntervalMs,
 }: {
   gaps: AnyRow[];
   coverage: AnyRow[];
   refresh: () => Promise<void>;
+  scanIntervalMs?: number;
 }) {
   return (
     <>
@@ -372,6 +374,7 @@ export function Quality({
       <section className="panel">
         <div className="panel-title">
           <span>GAP REGISTER</span>
+          <small>AUTO-SCAN · EVERY {Math.max(1, Math.round((scanIntervalMs ?? 300_000) / 60_000))} MIN</small>
           <button
             onClick={async () => {
               await apiJson("/api/gaps/repair", { method: "POST" });

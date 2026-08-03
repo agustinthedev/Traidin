@@ -21,6 +21,8 @@ const envSchema = z.object({
   AGGREGATED_TIMEFRAMES: z.string().default("5m,15m,1h,4h,1d,1w"),
   LOG_LEVEL: z.string().default("info"),
   EVENT_RETENTION_DAYS: z.coerce.number().int().positive().default(30),
+  DATA_QUALITY_SCAN_INTERVAL_MS: z.coerce.number().int().min(30_000).max(86_400_000).default(300_000),
+  GAP_REPAIR_STALL_TIMEOUT_MS: z.coerce.number().int().min(120_000).max(86_400_000).default(600_000),
   START_WORKERS: z.enum(["true", "false"]).default("true"),
 });
 const env = envSchema.parse(process.env);
@@ -70,6 +72,8 @@ export function safeConfig() {
     aggregatedTimeframes: config.aggregatedTimeframes,
     sqliteBatchSize: config.SQLITE_BATCH_SIZE,
     eventRetentionDays: config.EVENT_RETENTION_DAYS,
+    dataQualityScanIntervalMs: config.DATA_QUALITY_SCAN_INTERVAL_MS,
+    gapRepairStallTimeoutMs: config.GAP_REPAIR_STALL_TIMEOUT_MS,
     streamsEnabled: config.START_WORKERS === "true",
     credentials: config.credentials,
   };

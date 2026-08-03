@@ -9,6 +9,7 @@ export class GapRepairWorker {
   private timer?: NodeJS.Timeout;
   private watchdogTimer?: NodeJS.Timeout;
   private busy = false;
+  private activeGapId?: string;
   private liveFreshSince = 0;
   healthy = true;
   async start() {
@@ -22,7 +23,14 @@ export class GapRepairWorker {
     if (this.watchdogTimer) clearInterval(this.watchdogTimer);
   }
   private async watchdog() {
-    const failed = await gapRepository.failStalled(120_000);
+    // The worker can spend several minutes in a REST retry or aggregation pass
+    // without writing a candle checkpoint. Never fail that active gap from a
+    // concurrent watchdog tick; its own catch/finally path owns the terminal
+    // state. Other abandoned repairs remain protected by the watchdog.
+    const failed = await gapRepository.failStalled(
+      config.GAP_REPAIR_STALL_TIMEOUT_MS,
+      this.activeGapId,
+    );
     if (!failed) return;
     this.healthy = false;
     await eventBus.emit({
@@ -63,6 +71,7 @@ export class GapRepairWorker {
         this.healthy = true;
         return;
       }
+      this.activeGapId = gap.id;
       await eventBus.emit({
         level: "REPAIR",
         component: "gap-repair",
@@ -185,6 +194,7 @@ export class GapRepairWorker {
         timeframe: gap?.timeframe,
       });
     } finally {
+      this.activeGapId = undefined;
       this.busy = false;
     }
   }

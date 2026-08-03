@@ -9,6 +9,7 @@ import { liveState } from "../live-state.js";
 
 export class AggregationEngine {
   private reconciliationTimer?: NodeJS.Timeout;
+  private qualityScanInFlight = false;
   private reconciling = false;
   healthy = true;
   start() {
@@ -18,12 +19,39 @@ export class AggregationEngine {
         if (liveState.websocketFresh())
           void this.reconcileIncomplete(10, true).catch(() => {});
       },
-      300_000,
+      config.DATA_QUALITY_SCAN_INTERVAL_MS,
     );
+    void this.scanDataQuality();
   }
   stop() {
     if (this.reconciliationTimer) clearInterval(this.reconciliationTimer);
     this.reconciliationTimer = undefined;
+  }
+  private async scanDataQuality() {
+    if (this.qualityScanInFlight || !liveState.websocketFresh() || jobRepository.hasActive()) return;
+    this.qualityScanInFlight = true;
+    try {
+      const result = await gapService.scanAll();
+      await eventBus.emit({
+        level: "INFO",
+        component: "gap-detector",
+        event: "GAP_SCAN_COMPLETED",
+        message: `Automatic data-quality scan completed: ${result.ranges} gap range(s) found`,
+        rowsAffected: result.ranges,
+        details: { automatic: true, frames: result.frames },
+      });
+    } catch (error) {
+      this.healthy = false;
+      await eventBus.emit({
+        level: "ERROR",
+        component: "gap-detector",
+        event: "GAP_SCAN_FAILED",
+        message: error instanceof Error ? error.message : "Automatic data-quality scan failed",
+        errorCode: "GAP_SCAN_FAILED",
+      });
+    } finally {
+      this.qualityScanInFlight = false;
+    }
   }
   async onMinuteClosed(minute: Candle) {
     for (const timeframe of config.aggregatedTimeframes) {

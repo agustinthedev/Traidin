@@ -3,5 +3,15 @@ import { alignCeil, bucketOpen, intervalMs } from "../domain/intervals.js";
 import { eventBus } from "../events/bus.js";
 export class GapService {
   async scan(symbol: string, timeframe: string, start: Date, end: Date) { const alignedStart = alignCeil(start, timeframe); const alignedEnd = bucketOpen(end, timeframe); if (alignedStart > alignedEnd) return []; const ranges = candleRepository.missingRanges(symbol, timeframe, alignedStart, alignedEnd, intervalMs(timeframe)).filter((gap) => gap.count > 0 && gap.start <= gap.end); const created = await gapRepository.createMany(ranges.map((gap) => ({ symbol, timeframe, gapStart: gap.start, gapEnd: gap.end, expectedCandles: gap.count }))); if (created) await eventBus.emit({ level: "REPAIR", component: "gap-detector", event: "GAP_DETECTED", message: `${created} missing range(s) detected`, symbol, timeframe, details: ranges }); return ranges; }
+  async scanAll() {
+    const coverage = candleRepository.coverage() as Array<{ symbol: string; timeframe: string; first_open_time: number | null; last_open_time: number | null }>;
+    let ranges = 0;
+    for (const frame of coverage) {
+      if (frame.first_open_time == null || frame.last_open_time == null) continue;
+      const found = await this.scan(frame.symbol, frame.timeframe, new Date(frame.first_open_time), new Date(frame.last_open_time));
+      ranges += found.length;
+    }
+    return { frames: coverage.length, ranges };
+  }
 }
 export const gapService = new GapService();

@@ -569,14 +569,14 @@ export const gapRepository = {
         .run(Date.now()).changes,
     );
   },
-  async failStalled(timeoutMs: number) {
+  async failStalled(timeoutMs: number, excludeId?: string) {
     const now = Date.now();
     return sqlite.writer.enqueue(2, "gap-stall-watchdog", (db) =>
       db
         .prepare(
-          "UPDATE gaps SET status='FAILED',error_message='No repair checkpoint progress within the watchdog window',updated_at=? WHERE status='REPAIRING' AND updated_at < ?",
+          `UPDATE gaps SET status='FAILED',error_message='No repair checkpoint progress within the watchdog window',updated_at=? WHERE status='REPAIRING' AND updated_at < ?${excludeId ? " AND id <> ?" : ""}`,
         )
-        .run(now, now - timeoutMs).changes,
+        .run(...(excludeId ? [now, now - timeoutMs, excludeId] : [now, now - timeoutMs])).changes,
     );
   },
   async claimNext() {

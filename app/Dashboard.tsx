@@ -174,7 +174,12 @@ export default function Dashboard() {
             />
           )}
           {tab === "Data Quality" && (
-            <Quality gaps={gaps} coverage={coverage} refresh={refresh} />
+            <Quality
+              gaps={gaps}
+              coverage={coverage}
+              refresh={refresh}
+              scanIntervalMs={Number(status?.config?.dataQualityScanIntervalMs) || 300_000}
+            />
           )}
           {tab === "Symbols" && <Symbols rows={metadata} refresh={refresh} />}
           {tab === "Database" && (
