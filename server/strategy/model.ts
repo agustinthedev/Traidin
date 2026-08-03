@@ -3,6 +3,7 @@ import { z } from "zod";
 import { indicatorRegistry, validateIndicator } from "./indicators.js";
 
 export const TIMEFRAMES = ["1m", "5m", "15m", "1h", "4h", "1d", "1w"] as const;
+export const TIMEFRAME_MINUTES: Record<(typeof TIMEFRAMES)[number], number> = { "1m": 1, "5m": 5, "15m": 15, "1h": 60, "4h": 240, "1d": 1440, "1w": 10080 };
 export const StrategyStatus = z.enum(["DRAFT", "READY_FOR_VERIFICATION", "VERIFIED", "VERIFICATION_WARNING", "VERIFICATION_FAILED", "ARCHIVED"]);
 export type StrategyStatus = z.infer<typeof StrategyStatus>;
 
@@ -74,6 +75,7 @@ export function configurationHash(config: StrategyConfig) { return createHash("s
 /** Deterministic publish/run validation with actionable errors for the Strategy Builder. */
 export function validateStrategyConfiguration(config: StrategyConfig): string[] {
   const errors: string[] = [], frames = new Set(config.requiredTimeframes);
+  if (TIMEFRAME_MINUTES[config.executionTimeframe] > TIMEFRAME_MINUTES[config.triggerTimeframe]) errors.push(`Execution timeframe ${config.executionTimeframe} cannot be coarser than trigger timeframe ${config.triggerTimeframe}`);
   if (!frames.has(config.triggerTimeframe)) errors.push(`Required timeframes must include trigger timeframe ${config.triggerTimeframe}`);
   if (!frames.has(config.executionTimeframe)) errors.push(`Required timeframes must include execution timeframe ${config.executionTimeframe}`);
   const reference = (ref: ValueRef, path: string) => {

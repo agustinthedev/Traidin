@@ -69,12 +69,18 @@ export function monteCarlo(trades: SimTrade[], initialBalance: number, count: nu
     median: sampleAt.map((_, index) => percentile(paths.map((path) => path[index]), .5)),
     p95: sampleAt.map((_, index) => percentile(paths.map((path) => path[index]), .95)),
   };
+  const ruinIndexes = ruined.map((item) => item.tradeIndex);
+  const allPathValues = paths.flat().filter(Number.isFinite);
   return {
-    count, seed, model: useR ? "FIXED_EQUITY_R" : "COMPOUNDED_NET_RETURN", initialBalance,
+    count, seed, model: useR ? "NET_R_FIXED_EQUITY_RISK" : "COMPOUNDED_NET_RETURN", initialBalance,
     pathsShown: paths.length, samplePoints: samples, paths, percentilePaths,
     medianFinalEquity: percentile(finals, .5), p05FinalEquity: percentile(finals, .05), p95FinalEquity: percentile(finals, .95),
     medianMaxDrawdownPct: percentile(drawdowns, .5), p05MaxDrawdownPct: percentile(drawdowns, .05), p95MaxDrawdownPct: percentile(drawdowns, .95),
     probabilityOfProfit: finals.filter((value) => value > initialBalance).length / (finals.length || 1) * 100,
     ruinedPathCount: ruined.length, ruinProbabilityPct: ruined.length / (count || 1) * 100, ruinedPaths: ruined,
+    earliestRuinTradeIndex: ruinIndexes.length ? Math.min(...ruinIndexes) : null,
+    medianRuinTradeIndex: ruinIndexes.length ? percentile(ruinIndexes, .5) : null,
+    minimumSimulatedEquity: allPathValues.length ? Math.min(...allPathValues) : initialBalance,
+    minimumSimulatedDrawdownPct: drawdowns.length ? Math.min(...drawdowns) : 0,
   };
 }

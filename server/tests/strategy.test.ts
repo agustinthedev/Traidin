@@ -54,6 +54,8 @@ describe("point-in-time multi-timeframe safety", () => {
     const engine = new FeatureEngine("BTCUSDT", new Date(Date.UTC(2026,0,1)), new Date(Date.UTC(2026,0,3)), source as any).load(["1m", "1d"]);
     expect(engine.price("close", "1d", new Date(Date.UTC(2026, 0, 2, 12)))).toBe(100);
     expect(engine.price("close", "1d", new Date(Date.UTC(2026, 0, 3)))).toBe(200);
+    expect(engine.getLatestClosedCandle("1d", new Date(Date.UTC(2026, 0, 2, 12)))?.close).toBe("100");
+    expect(engine.getLatestClosedCandle("1d", new Date(Date.UTC(2025, 11, 31, 23, 59)))).toBeNull();
   });
   it("evaluates nested AND/OR without leaking unavailable warmup features", () => {
     const source = { verificationRange: () => frame };
@@ -84,6 +86,10 @@ describe("strategy configuration validation", () => {
   it("rejects unknown indicators and timeframes omitted from the point-in-time contract", () => {
     const config = strategyConfigSchema.parse({ exchange: "BINANCE", market: "BINANCE_USDM_FUTURES", symbols: ["BTCUSDT"], triggerTimeframe: "5m", executionTimeframe: "5m", requiredTimeframes: ["5m"], directions: "LONG_ONLY", longEntry: { left: { type: "indicator", indicator: "not_real", parameters: {}, timeframe: "1h" }, operator: ">", right: { type: "constant", value: 1 } }, stop: { type: "PERCENTAGE", percentage: 1 }, takeProfit: { type: "NONE" }, sizing: { type: "FIXED_NOTIONAL", notional: 100 }, leverage: { fixed: 1, maximum: 1 }, costs: {} });
     expect(validateStrategyConfiguration(config)).toEqual(expect.arrayContaining([expect.stringContaining("timeframe 1h is not required"), expect.stringContaining("Unknown indicator: not_real")]));
+  });
+  it("rejects execution resolution coarser than the trigger", () => {
+    const config = strategyConfigSchema.parse({ exchange: "BINANCE", market: "BINANCE_USDM_FUTURES", symbols: ["BTCUSDT"], triggerTimeframe: "15m", executionTimeframe: "1h", requiredTimeframes: ["15m", "1h"], directions: "LONG_ONLY", longEntry: { left: { type: "constant", value: 1 }, operator: "==", right: { type: "constant", value: 1 } }, stop: { type: "PERCENTAGE", percentage: 1 }, takeProfit: { type: "NONE" }, sizing: { type: "FIXED_NOTIONAL", notional: 100 }, leverage: { fixed: 1, maximum: 1 }, costs: {} });
+    expect(validateStrategyConfiguration(config)).toEqual(expect.arrayContaining([expect.stringContaining("cannot be coarser")]));
   });
 });
 describe("historical execution", () => {

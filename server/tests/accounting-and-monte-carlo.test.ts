@@ -62,6 +62,24 @@ describe("verification accounting and Monte Carlo", () => {
     expect(result.effectiveFeeRate).toBeGreaterThan(0);
   });
 
+  it("reconstructs partial exit fills and percentage rates without leverage multiplication", () => {
+    const partial = { ...trade(1, 0.144, 0, 1), entryPrice: "100", exitPrice: "110", quantity: "2", fees: "0.144", details: { entryFee: "0.10", exitFee: "0.044", entryFeeType: "TAKER", exitFeeType: "MAKER", entryFeeRatePct: 0.05, exitFeeRatePct: 0.02, exitFills: [{ price: 105, quantity: 1 }, { price: 115, quantity: 1 }] } } as SimTrade;
+    const result = auditTradeFees([partial], { makerFeePct: .02, takerFeePct: .05 });
+    expect(result.status).toBe("PASS");
+    expect(result.totalEntryNotional).toBe(200);
+    expect(result.totalExitNotional).toBe(220);
+    expect(result.reconstructedFees).toBeCloseTo(.144);
+  });
+
+  it("exposes explicit ruin statistics and the fixed-risk Monte Carlo model", () => {
+    const result = monteCarlo([trade(-200, 0, 0, -20)], 100, 20, 42, fixedRiskConfig);
+    expect(result.model).toBe("NET_R_FIXED_EQUITY_RISK");
+    expect(result.earliestRuinTradeIndex).toBe(1);
+    expect(result.medianRuinTradeIndex).toBe(1);
+    expect(result.minimumSimulatedEquity).toBe(0);
+    expect(result.minimumSimulatedDrawdownPct).toBe(-100);
+  });
+
   it("keeps no-debt chart domains at or above zero", () => {
     expect(equityChartDomain([100, 120, 80]).min).toBeGreaterThanOrEqual(0);
     expect(equityChartDomain([0, 0]).min).toBe(0);

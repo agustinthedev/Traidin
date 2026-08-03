@@ -35,11 +35,13 @@ export class FeatureEngine {
     while (lo <= hi) { const mid = (lo + hi) >> 1; if (frame.candles[mid].closeTime.getTime() <= target) { answer = mid; lo = mid + 1; } else hi = mid - 1; }
     return answer;
   }
+  getLatestClosedCandle(timeframe: string, asOf: Date) { const frame = this.frames.get(timeframe); if (!frame) throw new Error(`Timeframe ${timeframe} is not loaded`); const index = this.latestIndex(timeframe, asOf); return index < 0 ? null : frame.candles[index] ?? null; }
   value(request: FeatureRequest, asOf: Date) {
     const { values, definition } = this.ensure(request); const index = this.latestIndex(request.timeframe, asOf);
     if (index < definition.warmupBars(request.parameters ?? {}) - 1) return Number.NaN;
     return index < 0 ? Number.NaN : values[index];
   }
+  getLatestClosedFeature(request: FeatureRequest, asOf: Date) { const value = this.value(request, asOf); return Number.isFinite(value) ? value : null; }
   previousValue(request: FeatureRequest, asOf: Date) {
     const { values, definition } = this.ensure(request); const index = this.latestIndex(request.timeframe, asOf) - 1;
     if (index < definition.warmupBars(request.parameters ?? {}) - 1) return Number.NaN;
