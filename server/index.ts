@@ -17,8 +17,37 @@ import { gapRepairWorker } from "./workers/gap-repair.js";
 import { liveIngestionWorker } from "./workers/live-ingestion.js";
 import { aggregationEngine } from "./workers/aggregation.js";
 import { verificationWorker } from "./strategy/verification-worker.js";
-import { researchWorker } from "./strategy/research-worker.js";
 import { systemStateRepository } from "./db/repository.js";
+import { fork, type ChildProcess } from "node:child_process";
+import { fileURLToPath } from "node:url";
+import { researchRepository } from "./strategy/research-repository.js";
+
+let researchWorkerProcess: ChildProcess | null = null;
+let researchWorkerId: string | null = null;
+let shuttingDown = false;
+
+function spawnResearchWorker() {
+  if (shuttingDown || researchWorkerProcess) return;
+  researchWorkerId = `research-worker-${process.pid}-${Date.now()}`;
+  const workerPath = fileURLToPath(new URL("./strategy/research-worker-process.ts", import.meta.url));
+  const child = fork(workerPath, [], {
+    env: { ...process.env, TREIDIN_RESEARCH_WORKER_ID: researchWorkerId },
+    execArgv: process.execArgv,
+    stdio: "inherit",
+  });
+  researchWorkerProcess = child;
+  child.once("exit", (code, signal) => {
+    researchWorkerProcess = null;
+    const workerId = researchWorkerId;
+    researchWorkerId = null;
+    if (workerId) void researchRepository.failWorkerRuns(workerId);
+    if (!shuttingDown) {
+      app.log.error({ code, signal }, "Research worker process exited; restarting it");
+      setTimeout(spawnResearchWorker, 1000).unref();
+    }
+  });
+  child.once("error", (error) => app.log.error(error, "Research worker process error"));
+}
 
 const app = Fastify({
   logger: {
@@ -71,7 +100,7 @@ async function start() {
     await backfillWorker.start();
   }
   verificationWorker.start();
-  await researchWorker.start();
+  spawnResearchWorker();
   await app.listen({ host: config.API_HOST, port: config.API_PORT });
   await eventBus.emit({
     level: "INFO",
@@ -81,12 +110,14 @@ async function start() {
   });
 }
 async function shutdown() {
+  shuttingDown = true;
   liveIngestionWorker.stop();
   backfillWorker.stop();
   gapRepairWorker.stop();
   aggregationEngine.stop();
   verificationWorker.stop();
-  researchWorker.stop();
+  if (researchWorkerProcess && !researchWorkerProcess.killed) researchWorkerProcess.kill("SIGTERM");
+  researchWorkerProcess = null;
   await app.close();
   sqlite.close();
 }

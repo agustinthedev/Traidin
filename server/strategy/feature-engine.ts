@@ -1,12 +1,14 @@
 import type { Candle } from "../domain/candle.js";
 import { candleRepository } from "../db/repository.js";
 import { calculateIndicator, indicatorRegistry, type FeatureSeries, validateIndicator } from "./indicators.js";
+import type { ValueRef } from "./model.js";
 
 export type FeatureRequest = { indicator: string; parameters?: Record<string, unknown>; timeframe: string; output?: string };
 type Frame = { candles: Candle[]; features: Map<string, FeatureSeries> };
 export type FeatureDataSource = {
   verificationRange(symbol: string, timeframe: string, start: Date, end: Date): Candle[];
 };
+export type ReferenceAvailability = "AVAILABLE" | "EXPECTED_WARMUP_MISSING" | "MISSING_REQUIRED_DATA";
 const key = (id: string, parameters: Record<string, unknown>) => `${id}:${JSON.stringify(Object.entries(parameters).sort(([a], [b]) => a.localeCompare(b)))}`;
 
 /** Point-in-time feature store. Every frame contains only complete, closed candles. */
@@ -43,6 +45,21 @@ export class FeatureEngine {
     const { values, definition } = this.ensure(request); const index = this.latestIndex(request.timeframe, asOf);
     if (index < definition.warmupBars(request.parameters ?? {}) - 1) return Number.NaN;
     return index < 0 ? Number.NaN : values[index];
+  }
+  referenceAvailability(ref: ValueRef, asOf: Date): ReferenceAvailability {
+    if (ref.type === "constant") return "AVAILABLE";
+    const timeframe = ref.timeframe ?? "1m";
+    const frame = this.frames.get(timeframe);
+    if (!frame) return "MISSING_REQUIRED_DATA";
+    const index = this.latestIndex(timeframe, asOf);
+    if (index < 0) return "MISSING_REQUIRED_DATA";
+    if (ref.type === "indicator") {
+      try { return index < validateIndicator(ref.indicator, ref.parameters).warmupBars(ref.parameters) - 1 ? "EXPECTED_WARMUP_MISSING" : "AVAILABLE"; } catch { return "MISSING_REQUIRED_DATA"; }
+    }
+    if (ref.type === "feature") {
+      try { return index < validateIndicator(ref.feature).warmupBars({}) - 1 ? "EXPECTED_WARMUP_MISSING" : "AVAILABLE"; } catch { return "MISSING_REQUIRED_DATA"; }
+    }
+    return "AVAILABLE";
   }
   getLatestClosedFeature(request: FeatureRequest, asOf: Date) { const value = this.value(request, asOf); return Number.isFinite(value) ? value : null; }
   previousValue(request: FeatureRequest, asOf: Date) {

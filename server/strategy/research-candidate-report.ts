@@ -53,6 +53,8 @@ const candidateReportPayload = (candidate: Row) => {
     return [period, { ...summary, equityPoints: Array.isArray(equityCurve) ? equityCurve.length : 0 }];
   }));
   return {
+    humanDescription: candidate.humanDescription ?? null,
+    formatterVersion: candidate.formatterVersion ?? "legacy",
     normalizedAst: candidate.normalizedAst,
     configuration: candidate.configuration,
     metrics,
@@ -60,6 +62,7 @@ const candidateReportPayload = (candidate: Row) => {
     rejectionReason: candidate.rejectionReason,
     terminalReason: candidate.terminalReason,
     semanticFingerprint: candidate.semanticFingerprint,
+    preflightDiagnostics: candidate.preflightDiagnostics ?? {},
   };
 };
 
@@ -112,12 +115,21 @@ export async function researchCandidateReportPdf(input: { run: Row; candidate: R
         if (offset < lines.length) nextPage();
       }
     };
-
+    const drawDescription = (value: unknown) => {
+      const lines = String(value ?? "Description unavailable for this legacy Candidate.").split(/\r?\n/).map((line) => clean(line));
+      requireSpace(Math.min(160, lines.length * 12 + 22));
+      document.fillColor("#64748b").font("Helvetica-Bold").fontSize(8).text("HUMAN-READABLE STRATEGY DESCRIPTION", 40, document.y);
+      document.moveDown(.35);
+      document.fillColor("#1f2937").font("Courier").fontSize(7.5).text(lines.join("\n"), 40, document.y, { width: 515, lineGap: 2 });
+      document.moveDown(.5);
+    };
     header();
     document.fillColor("#0f172a").font("Helvetica-Bold").fontSize(20).text(`Candidate ${clean(input.candidate.id).slice(0, 8)} - ${clean(input.candidate.family)}`);
     document.fillColor("#64748b").font("Helvetica").fontSize(9).text("Discovery-stage strategy report. This is not a complete Strategy Verifier report."); document.moveDown(.8);
     title("Candidate identity");
-    fields([["Research run", input.run.name], ["Research run ID", input.run.id], ["Candidate ID", input.candidate.id], ["Status / rejection", `${input.candidate.status ?? "-"} / ${input.candidate.rejectionStage ?? "-"}`], ["Family / direction", `${input.candidate.family ?? "-"} / ${input.candidate.direction ?? "-"}`], ["Complexity / score", `${input.candidate.complexityScore ?? "-"} / ${number(input.candidate.score)}`], ["Normalized hash", input.candidate.normalizedHash], ["Dataset / seed", `${(input.run.datasetFingerprint as Row | undefined)?.checksum ?? "-"} / ${input.run.randomSeed ?? "-"}`]]);
+    fields([["Research run", input.run.name], ["Research run ID", input.run.id], ["Run status / outcome", `${input.run.status ?? "-"} / ${input.run.terminalOutcome ?? "LEGACY"}`], ["Candidate ID", input.candidate.id], ["Status / rejection", `${input.candidate.status ?? "-"} / ${input.candidate.rejectionStage ?? "-"}`], ["Family / direction", `${input.candidate.family ?? "-"} / ${input.candidate.direction ?? "-"}`], ["Complexity / score", `${input.candidate.complexityScore ?? "-"} / ${number(input.candidate.score)}`], ["Normalized hash", input.candidate.normalizedHash], ["Dataset / seed", `${(input.run.datasetFingerprint as Row | undefined)?.checksum ?? "-"} / ${input.run.randomSeed ?? "-"}`]]);
+    title("Human-readable strategy");
+    drawDescription(input.candidate.humanDescription);
     title("Evaluation performance");
     table(["Period", "Date range", "Trades", "PF", "Return", "Max DD", "Final equity"], periodRows, [52, 160, 46, 46, 56, 58, 97]);
     const metricRows = ["is", "oos", "holdout"].map((period) => { const values = metric(input.candidate, period); return [period.toUpperCase(), metricNumber(values.profitFactor, 3), `${number(values.grossProfit)} / ${number(values.grossLoss)}`, `${metricNumber(values.winRate)}%`, `${number(values.averageWin)} / ${number(values.averageLoss)}`, number(values.expectancy), number(values.fees), number(values.totalSlippageImpact), number(values.totalFunding)]; });
@@ -191,18 +203,26 @@ export async function researchRunCandidatesReportPdf(input: { run: Row; candidat
         if (offset < lines.length) nextPage();
       }
     };
+    const drawDescription = (value: unknown) => {
+      const lines = String(value ?? "Description unavailable for this legacy Candidate.").split(/\r?\n/).map((line) => clean(line));
+      requireSpace(Math.min(160, lines.length * 12 + 22));
+      document.fillColor("#64748b").font("Helvetica-Bold").fontSize(8).text("HUMAN-READABLE STRATEGY DESCRIPTION", 40, document.y);
+      document.moveDown(.35);
+      document.fillColor("#1f2937").font("Courier").fontSize(7.5).text(lines.join("\n"), 40, document.y, { width: 515, lineGap: 2 });
+      document.moveDown(.5);
+    };
 
     header();
     document.fillColor("#0f172a").font("Helvetica-Bold").fontSize(20).text(clean(input.run.name));
     document.fillColor("#64748b").font("Helvetica").fontSize(9).text("Complete discovery export for every persisted Candidate in this Research Run."); document.moveDown(.8);
     title("Research run identity");
-    fields([["Research run ID", input.run.id], ["Symbol / directions", `${input.run.symbol ?? "-"} / ${input.run.directions ?? "-"}`], ["Trigger / execution", `${input.run.triggerTimeframe ?? "-"} / ${input.run.executionTimeframe ?? "-"}`], ["Candidate budget / exported", `${input.run.candidateBudget ?? "-"} / ${candidates.length}`], ["Accepted / evaluated", `${input.run.acceptedCandidateCount ?? input.run.generatedCount ?? "-"} / ${input.run.evaluatedCandidateCount ?? "-"}`], ["Attempts / raw generated", `${input.run.generationAttemptCount ?? "-"} / ${input.run.generatedRawCount ?? "-"}`], ["Static / preflight rejected", `${input.run.staticRejectedCount ?? "-"} / ${input.run.preflightRejectedCount ?? "-"}`], ["Exact / semantic duplicates", `${input.run.exactDuplicateCount ?? "-"} / ${input.run.semanticDuplicateCount ?? "-"}`], ["Status / completion", `${input.run.status ?? "-"} / ${input.run.completionReason ?? "-"}`], ["Periods", `${date(((input.run.periods as Row | undefined)?.is as Row | undefined)?.start)} to ${date(((input.run.periods as Row | undefined)?.holdout as Row | undefined)?.end)}`], ["Configuration hash", input.run.configHash], ["Dataset fingerprint", (input.run.datasetFingerprint as Row | undefined)?.checksum]]);
+    fields([["Research run ID", input.run.id], ["Symbol / directions", `${input.run.symbol ?? "-"} / ${input.run.directions ?? "-"}`], ["Trigger / execution", `${input.run.triggerTimeframe ?? "-"} / ${input.run.executionTimeframe ?? "-"}`], ["Candidate budget / exported", `${input.run.candidateBudget ?? "-"} / ${candidates.length}`], ["Accepted / evaluated", `${input.run.acceptedCandidateCount ?? input.run.generatedCount ?? "-"} / ${input.run.evaluatedCandidateCount ?? "-"}`], ["Attempts / raw generated", `${input.run.generationAttemptCount ?? "-"} / ${input.run.generatedRawCount ?? "-"}`], ["Static / preflight rejected", `${input.run.staticRejectedCount ?? "-"} / ${input.run.preflightRejectedCount ?? "-"}`], ["Exact / semantic duplicates", `${input.run.exactDuplicateCount ?? "-"} / ${input.run.semanticDuplicateCount ?? "-"}`], ["Status / terminal outcome", `${input.run.status ?? "-"} / ${input.run.terminalOutcome ?? "LEGACY"}`], ["Completion message", input.run.completionMessage ?? "-"], ["Periods", `${date(((input.run.periods as Row | undefined)?.is as Row | undefined)?.start)} to ${date(((input.run.periods as Row | undefined)?.holdout as Row | undefined)?.end)}`], ["Configuration hash", input.run.configHash], ["Dataset fingerprint", (input.run.datasetFingerprint as Row | undefined)?.checksum]]);
     title("All candidates");
     table(["#", "Candidate", "Status", "Family", "Complexity", "IS PF", "OOS PF", "Holdout PF", "Score"], candidates.map((candidate, index) => [index + 1, clean(candidate.id).slice(0, 8), compact(candidate.status, 16), compact(candidate.family, 15), candidate.complexityScore, metricNumber(periodValue(candidate, "is", "profitFactor"), 3), metricNumber(periodValue(candidate, "oos", "profitFactor"), 3), metricNumber(periodValue(candidate, "holdout", "profitFactor"), 3), metricNumber(candidate.score)]), [25, 58, 82, 75, 55, 54, 60, 70, 76]);
     title("Stage diagnostics");
     table(["#", "IS trades / DD", "OOS trades / DD", "Holdout trades / DD", "Rejection reason"], candidates.map((candidate, index) => { const is = metric(candidate, "is"), oos = metric(candidate, "oos"), holdout = metric(candidate, "holdout"); return [index + 1, `${is.trades ?? "-"} / ${metricNumber(is.maxDrawdownPct)}%`, `${oos.trades ?? "-"} / ${metricNumber(oos.maxDrawdownPct)}%`, `${holdout.trades ?? "-"} / ${metricNumber(holdout.maxDrawdownPct)}%`, compact(candidate.rejectionReason ?? candidate.terminalReason ?? "-")]; }), [25, 105, 115, 125, 145]);
     requireSpace(450); title("Candidate configurations");
-    candidates.forEach((candidate, index) => { requireSpace(180); document.x = 40; document.fillColor("#0f5f9e").font("Helvetica-Bold").fontSize(9).text(`#${index + 1} ${clean(candidate.id).slice(0, 8)} - ${clean(candidate.family)} - ${clean(candidate.status)}`, 40, document.y, { lineBreak: false, ellipsis: true }); document.y += 14; drawCandidateChart(candidate, index); requireSpace(24); document.fillColor("#64748b").font("Helvetica-Bold").fontSize(7).text("JSON PAYLOAD (EQUITY TRAIL SUMMARIZED IN THE CHART ABOVE)", 40, document.y); document.moveDown(.4); drawJsonBlock(candidateReportPayload(candidate)); });
+    candidates.forEach((candidate, index) => { requireSpace(180); document.x = 40; document.fillColor("#0f5f9e").font("Helvetica-Bold").fontSize(9).text(`#${index + 1} ${clean(candidate.id).slice(0, 8)} - ${clean(candidate.family)} - ${clean(candidate.status)}`, 40, document.y, { lineBreak: false, ellipsis: true }); document.y += 14; drawDescription(candidate.humanDescription); drawCandidateChart(candidate, index); requireSpace(24); document.fillColor("#64748b").font("Helvetica-Bold").fontSize(7).text("JSON PAYLOAD (EQUITY TRAIL SUMMARIZED IN THE CHART ABOVE)", 40, document.y); document.moveDown(.4); drawJsonBlock(candidateReportPayload(candidate)); });
     title("Export notes");
     fields([["Metric scope", "IS, OOS and holdout metrics are calculated on their respective chronological period."], ["Equity scope", "The Candidate explorer stitches period curves for visual continuity; the period metrics above remain independent."], ["Verification scope", "Candidates do not include persisted trade-level data or a full verification audit. Promote a Candidate and run Full Verification for that report."], ["Search engine", input.run.searchAlgorithmVersion], ["Random seed", input.run.randomSeed]]);
     footer();

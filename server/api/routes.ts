@@ -350,6 +350,8 @@ export async function registerRoutes(app: FastifyInstance) {
   });
   app.get("/api/health", async () => {
     const db = databaseOverview();
+    const activeResearchRuns = researchRepository.list().filter((run) => ["RUNNING", "INITIALIZING", "PAUSING", "CANCELLING"].includes(run.status));
+    const researchWorkerHealthy = activeResearchRuns.every((run) => run.leaseExpiresAt && run.leaseExpiresAt.getTime() > Date.now());
     const components = {
       application: "HEALTHY",
       sqlite: db.integrity === "ok" ? "HEALTHY" : "UNHEALTHY",
@@ -364,6 +366,7 @@ export async function registerRoutes(app: FastifyInstance) {
       gapRepair: gapRepairWorker.healthy ? "HEALTHY" : "DEGRADED",
       aggregation: aggregationEngine.healthy ? "HEALTHY" : "DEGRADED",
       liveIngestion: liveIngestionWorker.healthy ? "HEALTHY" : "SYNCING",
+      researchWorker: researchWorkerHealthy ? "HEALTHY" : "UNHEALTHY",
     };
     const overall =
       Object.values(components).every((v) => v === "HEALTHY") &&

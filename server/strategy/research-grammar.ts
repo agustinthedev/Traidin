@@ -5,8 +5,9 @@ import type { FeatureEngine } from "./feature-engine.js";
 
 export type ValidationIssue = { code: string; path: string; message: string; severity: "ERROR" | "WARNING" };
 export type ValidationResult = { valid: boolean; issues: ValidationIssue[]; errors: string[] };
-export type PreflightSignalStats = { samples: number; trueCount: number; falseCount: number; transitionCount: number; firstTrueAt: number | null; lastTrueAt: number | null; fingerprint: string };
-export type PreflightResult = { accepted: boolean; issues: ValidationIssue[]; stats: { long: PreflightSignalStats; short: PreflightSignalStats }; semanticFingerprint: string };
+export type PreflightSignalStats = { samples: number; trueCount: number; falseCount: number; transitionCount: number; firstTrueAt: number | null; lastTrueAt: number | null; fingerprint: string; skippedWarmup: number };
+export type PreflightEvaluationDiagnostic = { status: import("./condition-engine.js").ConditionEvaluationStatus; time: number; reason?: string; diagnostic?: unknown };
+export type PreflightResult = { accepted: boolean; issues: ValidationIssue[]; stats: { long: PreflightSignalStats; short: PreflightSignalStats }; diagnostics: { long: PreflightEvaluationDiagnostic[]; short: PreflightEvaluationDiagnostic[] }; semanticFingerprint: string };
 
 const error = (code: string, path: string, message: string): ValidationIssue => ({ code, path, message, severity: "ERROR" });
 
@@ -101,25 +102,38 @@ export function validateCandidateSemantics(config: StrategyConfig): ValidationRe
   return { valid: !issues.some((issue) => issue.severity === "ERROR"), issues, errors: issues.filter((issue) => issue.severity === "ERROR").map((issue) => issue.message) };
 }
 
-function signalStats(values: boolean[], times: number[]): PreflightSignalStats {
+function signalStats(values: boolean[], times: number[], skippedWarmup = 0): PreflightSignalStats {
   let transitions = 0; for (let i = 1; i < values.length; i++) if (values[i] !== values[i - 1]) transitions++;
   const encoded = values.map((value) => value ? "1" : "0").join("");
-  return { samples: values.length, trueCount: values.filter(Boolean).length, falseCount: values.length - values.filter(Boolean).length, transitionCount: transitions, firstTrueAt: times[values.indexOf(true)] ?? null, lastTrueAt: times.length - 1 - [...values].reverse().indexOf(true) >= 0 ? times[times.length - 1 - [...values].reverse().indexOf(true)] ?? null : null, fingerprint: createHash("sha256").update(encoded).digest("hex") };
+  return { samples: values.length, trueCount: values.filter(Boolean).length, falseCount: values.length - values.filter(Boolean).length, transitionCount: transitions, firstTrueAt: times[values.indexOf(true)] ?? null, lastTrueAt: times.length - 1 - [...values].reverse().indexOf(true) >= 0 ? times[times.length - 1 - [...values].reverse().indexOf(true)] ?? null : null, fingerprint: createHash("sha256").update(encoded).digest("hex"), skippedWarmup };
 }
 
 export function preflightCandidate(config: StrategyConfig, engine: FeatureEngine, period: { start: Date; end: Date }): PreflightResult {
   const candles = engine.candles(config.triggerTimeframe).filter((candle) => candle.closeTime >= period.start && candle.closeTime <= period.end);
-  const times = candles.map((candle) => candle.closeTime.getTime());
-  const evaluate = (node: ConditionNode | undefined) => candles.map((candle) => node ? (() => { try { return evaluateCondition(node, engine, candle.closeTime).passed; } catch { return false; } })() : false);
-  const long = signalStats(evaluate(config.longEntry), times), short = signalStats(evaluate(config.shortEntry), times);
+  const evaluate = (node: ConditionNode | undefined) => candles.map((candle) => {
+    if (!node) return { status: "FALSE" as const, passed: false, time: candle.closeTime.getTime() };
+    try { const evaluated = evaluateCondition(node, engine, candle.closeTime); return { ...evaluated, time: candle.closeTime.getTime() }; }
+    catch (cause) { return { status: "EVALUATION_ERROR" as const, passed: false, reason: cause instanceof Error ? cause.message : "Condition evaluation failed", diagnostic: cause, time: candle.closeTime.getTime() }; }
+  });
+  const collect = (outcomes: ReturnType<typeof evaluate>) => {
+    const diagnostics = outcomes.filter((outcome) => outcome.status !== "TRUE" && outcome.status !== "FALSE").map((outcome) => ({ status: outcome.status, time: outcome.time, reason: outcome.reason, diagnostic: outcome.diagnostic })).slice(0, 25);
+    const errors = outcomes.filter((outcome) => !["TRUE", "FALSE", "EXPECTED_WARMUP_MISSING"].includes(outcome.status));
+    const usable = outcomes.filter((outcome) => outcome.status === "TRUE" || outcome.status === "FALSE");
+    return { stats: signalStats(usable.map((outcome) => outcome.passed), usable.map((outcome) => outcome.time), outcomes.filter((outcome) => outcome.status === "EXPECTED_WARMUP_MISSING").length), diagnostics, errors };
+  };
+  const collectedLong = collect(evaluate(config.longEntry)), collectedShort = collect(evaluate(config.shortEntry));
+  const long = collectedLong.stats, short = collectedShort.stats;
   const issues: ValidationIssue[] = [];
+  for (const [name, collected] of [["long", collectedLong], ["short", collectedShort]] as const) {
+    if (collected.errors.length) issues.push(error("PREFLIGHT_EVALUATION_ERROR", name, name + " evaluation produced " + collected.errors.length + " non-signal result(s): " + collected.errors[0]!.status));
+  }
   for (const [name, stats] of [["long", long], ["short", short]] as const) {
     if (!stats.samples) issues.push(error("PREFLIGHT_NO_SAMPLES", name, "No closed candles are available in the selected period"));
     else if (!stats.trueCount) issues.push(error("PREFLIGHT_UNREACHABLE_SIGNAL", name, `${name} entry never evaluates true in the reference period`));
     else if (!stats.falseCount || !stats.transitionCount) issues.push(error("PREFLIGHT_CONSTANT_SIGNAL", name, `${name} entry is constant across the reference period`));
   }
   if (long.fingerprint === short.fingerprint) issues.push(error("PREFLIGHT_IDENTICAL_SIGNALS", "entry", "Long and short produce identical signal series"));
-  return { accepted: !issues.some((issue) => issue.severity === "ERROR"), issues, stats: { long, short }, semanticFingerprint: createHash("sha256").update(`${long.fingerprint}:${short.fingerprint}`).digest("hex") };
+  return { accepted: !issues.some((issue) => issue.severity === "ERROR"), issues, stats: { long, short }, diagnostics: { long: collectedLong.diagnostics, short: collectedShort.diagnostics }, semanticFingerprint: createHash("sha256").update(long.fingerprint + ":" + short.fingerprint).digest("hex") };
 }
 
 // Kept local to avoid coupling the grammar module to simulator internals.
