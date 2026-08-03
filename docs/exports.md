@@ -8,3 +8,5 @@ Exports are derived from the immutable run record, not a recomputation of the cu
 # Verification exports
 
 Completed runs expose bounded, local CSV exports: `trades.csv` contains the first 1,000 persisted trades; `metrics.csv` emits scalar report metrics; and `breakdowns.csv` emits every report breakdown as section/key/JSON rows. Download endpoints use only persisted verification data and never include runtime settings, local paths, or credentials.
+
+`GET /api/verification-runs/:id/report.pdf` produces a paginated printable report from the persisted run: identity and configuration snapshot, performance and risk metrics, OOS and Monte Carlo summaries, scorecard, cost-stress table, and the full persisted trade appendix. It is generated locally and contains no credentials or runtime configuration.
