@@ -5,6 +5,7 @@ import "./globals.css";
 import "./fonts.css";
 import "./settings.css";
 import "./dashboard-theme.css";
+import "./treidin-design-system.css";
 
 export const metadata: Metadata = {
   title: "Treidin Market Data",

@@ -23,22 +23,25 @@ import CandlestickChart from "./dashboard/CandlestickChart";
 import StrategyVerification from "./dashboard/StrategyVerification";
 import { ToastViewport } from "./dashboard/toast";
 
-const NAV = [
-  "Overview",
-  "Live Market",
-  "Historical Data",
-  "Backfill Jobs",
-  "Data Quality",
-  "Symbols",
-  "Database",
-  "System Events",
-  "Settings",
-  "Strategies",
-  "Strategy Verifier",
-] as const;
-type Tab = (typeof NAV)[number];
+type Tab = "Overview" | "Live Market" | "Historical Data" | "Backfill Jobs" | "Data Quality" | "Symbols" | "Database" | "System Events" | "Settings" | "Strategies" | "Strategy Verifier";
+
+const NAV_GROUPS: Array<{ label: string; items: readonly Tab[] }> = [
+  { label: "Workspace", items: ["Overview"] },
+  { label: "Market data", items: ["Live Market", "Historical Data", "Data Quality", "Symbols"] },
+  { label: "Research", items: ["Strategies", "Strategy Verifier"] },
+  { label: "Operations", items: ["Backfill Jobs", "Database", "System Events"] },
+  { label: "System", items: ["Settings"] },
+];
+
+function NavIcon({ name }: { name: Tab }) {
+  const glyphs: Record<Tab, string> = {
+    Overview: "⌂", "Live Market": "↗", "Historical Data": "◫", "Backfill Jobs": "◌", "Data Quality": "✓", Symbols: "◇", Database: "▣", "System Events": "≋", Settings: "⚙", Strategies: "⌘", "Strategy Verifier": "◈",
+  };
+  return <span className="nav-icon" aria-hidden="true">{glyphs[name]}</span>;
+}
 export default function Dashboard() {
   const [tab, setTab] = useState<Tab>("Overview");
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [status, setStatus] = useState<AnyRow | null>(null);
   const [health, setHealth] = useState<AnyRow | null>(null);
   const [events, setEvents] = useState<AnyRow[]>([]);
@@ -100,7 +103,7 @@ export default function Dashboard() {
     ["DETECTED", "REPAIRING"].includes(g.status),
   ).length;
   return (
-    <main className="terminal-shell">
+    <main className={`terminal-shell ${sidebarCollapsed ? "sidebar-collapsed" : ""}`}>
       <ToastViewport />
       <header className="topbar">
         <div className="brand">
@@ -111,8 +114,8 @@ export default function Dashboard() {
           </div>
         </div>
         <div className="top-status">
-          <StatusDot state={health?.status ?? "STARTING"} />
-          <span>{health?.status ?? "STARTING"}</span>
+          <span className="environment-badge">LOCAL</span>
+          <span className="health-summary"><StatusDot state={health?.status ?? "STARTING"} /> {health?.status ?? "STARTING"}</span>
           <span className="divider" />
           <span>UTC {utcClock}</span>
           <span className="divider" />
@@ -120,26 +123,28 @@ export default function Dashboard() {
         </div>
       </header>
       <div className="workspace">
-        <aside className="sidebar">
-          {NAV.map((item, index) => (
-            <button
-              key={item}
-              className={tab === item ? "active" : ""}
-              onClick={() => setTab(item)}
-            >
-              <span>{String(index + 1).padStart(2, "0")}</span>
-              {item}
-              {item === "Backfill Jobs" && activeJobs > 0 && (
-                <b>{activeJobs}</b>
-              )}
-              {item === "Data Quality" && activeGaps > 0 && (
-                <b className="warn-badge">{activeGaps}</b>
-              )}
-            </button>
-          ))}
+        <aside className="sidebar" aria-label="Primary navigation">
+          <button className="sidebar-toggle" type="button" onClick={() => setSidebarCollapsed((value) => !value)} aria-label={sidebarCollapsed ? "Expand navigation" : "Collapse navigation"} title={sidebarCollapsed ? "Expand navigation" : "Collapse navigation"}>
+            <span aria-hidden="true">☰</span><em>Collapse menu</em>
+          </button>
+          <nav>
+            {NAV_GROUPS.map((group) => (
+              <div className="nav-group" key={group.label}>
+                <p>{group.label}</p>
+                {group.items.map((item) => (
+                  <button key={item} className={tab === item ? "active" : ""} onClick={() => setTab(item)} aria-current={tab === item ? "page" : undefined} title={sidebarCollapsed ? item : undefined}>
+                    <NavIcon name={item} />
+                    <span className="nav-label">{item}</span>
+                    {item === "Backfill Jobs" && activeJobs > 0 && <b>{activeJobs}</b>}
+                    {item === "Data Quality" && activeGaps > 0 && <b className="warn-badge">{activeGaps}</b>}
+                  </button>
+                ))}
+              </div>
+            ))}
+          </nav>
           <div className="side-foot">
-            <span>DATABASE</span>
-            <strong>SQLITE / WAL</strong>
+            <span>DATA STORE</span>
+            <strong>SQLITE · WAL</strong>
             <small>{status?.database?.path ?? "local"}</small>
           </div>
         </aside>
