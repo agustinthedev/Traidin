@@ -67,3 +67,37 @@ export async function researchCandidateReportPdf(input: { run: Row; candidate: R
     document.end();
   });
 }
+
+export async function researchRunCandidatesReportPdf(input: { run: Row; candidates: Row[] }) {
+  return await new Promise<Buffer>((resolve, reject) => {
+    const document = new PDFDocument({ size: "A4", margin: 40, info: { Title: `Treidin Strategy Lab ${clean(input.run.name)}`, Author: "Treidin" } });
+    const chunks: Buffer[] = [];
+    document.on("data", (chunk: Buffer) => chunks.push(chunk));
+    document.on("end", () => resolve(Buffer.concat(chunks)));
+    document.on("error", reject);
+    let page = 1;
+    const header = () => { document.rect(0, 0, 595, 54).fill("#07111e"); document.fillColor("#b7ff2a").font("Helvetica-Bold").fontSize(13).text("TREIDIN - STRATEGY LAB CANDIDATES REPORT", 40, 20); document.fillColor("#9fb0c2").font("Helvetica").fontSize(8).text(`Generated ${new Date().toISOString().replace("T", " ").slice(0, 19)} UTC`, 390, 23, { width: 165, align: "right" }); document.x = 40; document.y = 72; };
+    const footer = () => { document.fillColor("#718096").font("Helvetica").fontSize(8).text(`Treidin Strategy Lab - page ${page}`, 40, 790, { width: 515, align: "center" }); };
+    const nextPage = () => { footer(); document.addPage(); page++; header(); };
+    const requireSpace = (height: number) => { if (document.y + height > 778) nextPage(); };
+    const title = (text: string) => { requireSpace(28); document.moveTo(40, document.y).lineTo(555, document.y).strokeColor("#cbd5e1").lineWidth(.5).stroke(); document.moveDown(.55).fillColor("#0f5f9e").font("Helvetica-Bold").fontSize(12).text(clean(text)); document.moveDown(.35); };
+    const fields = (items: Array<[string, unknown]>) => { for (const [label, value] of items) { requireSpace(17); const y = document.y; document.fillColor("#64748b").font("Helvetica-Bold").fontSize(8).text(clean(label).toUpperCase(), 40, y, { width: 185 }); document.fillColor("#1f2937").rect(225, y - 3, 330, 14).fill(); document.fillColor("#e2e8f0").font("Helvetica").fontSize(8).text(clean(value), 231, y, { width: 318, ellipsis: true }); document.y = y + 17; } document.moveDown(.45); };
+    const table = (headers: string[], rows: unknown[][], widths: number[]) => { const drawHeader = () => { requireSpace(24); const y = document.y; document.rect(40, y - 3, 515, 17).fill("#0f2742"); let x = 44; headers.forEach((item, index) => { document.fillColor("#cbd5e1").font("Helvetica-Bold").fontSize(7).text(clean(item), x, y + 2, { width: widths[index] - 5, ellipsis: true }); x += widths[index]; }); document.y = y + 19; }; drawHeader(); rows.forEach((row) => { requireSpace(15); if (document.y + 15 > 778) { nextPage(); drawHeader(); } const y = document.y; let x = 44; row.forEach((item, index) => { document.fillColor("#28394c").font("Helvetica").fontSize(7).text(clean(item), x, y, { width: widths[index] - 5, ellipsis: true }); x += widths[index]; }); document.strokeColor("#d9e2ec").opacity(.2).moveTo(40, y + 12).lineTo(555, y + 12).stroke().opacity(1); document.y = y + 14; }); document.moveDown(.5); };
+    const periodValue = (candidate: Row, period: string, field: string) => metric(candidate, period)[field];
+    const candidates = [...input.candidates].sort((left, right) => Number(right.score ?? -Infinity) - Number(left.score ?? -Infinity));
+
+    header();
+    document.fillColor("#0f172a").font("Helvetica-Bold").fontSize(20).text(clean(input.run.name));
+    document.fillColor("#64748b").font("Helvetica").fontSize(9).text("Complete discovery export for every persisted Candidate in this Research Run."); document.moveDown(.8);
+    title("Research run identity");
+    fields([["Research run ID", input.run.id], ["Symbol / directions", `${input.run.symbol ?? "-"} / ${input.run.directions ?? "-"}`], ["Trigger / execution", `${input.run.triggerTimeframe ?? "-"} / ${input.run.executionTimeframe ?? "-"}`], ["Candidate budget / exported", `${input.run.candidateBudget ?? "-"} / ${candidates.length}`], ["Status / stage", `${input.run.status ?? "-"} / ${input.run.stage ?? "-"}`], ["Periods", `${date(((input.run.periods as Row | undefined)?.is as Row | undefined)?.start)} to ${date(((input.run.periods as Row | undefined)?.holdout as Row | undefined)?.end)}`], ["Configuration hash", input.run.configHash], ["Dataset fingerprint", (input.run.datasetFingerprint as Row | undefined)?.checksum]]);
+    title("All candidates");
+    table(["#", "Candidate", "Status", "Family", "Complexity", "IS PF", "OOS PF", "Holdout PF", "Score"], candidates.map((candidate, index) => [index + 1, clean(candidate.id).slice(0, 8), candidate.status, candidate.family, candidate.complexityScore, metricNumber(periodValue(candidate, "is", "profitFactor"), 3), metricNumber(periodValue(candidate, "oos", "profitFactor"), 3), metricNumber(periodValue(candidate, "holdout", "profitFactor"), 3), metricNumber(candidate.score)]), [25, 58, 82, 75, 55, 54, 60, 70, 76]);
+    title("Candidate configurations");
+    candidates.forEach((candidate, index) => { requireSpace(75); document.fillColor("#0f5f9e").font("Helvetica-Bold").fontSize(9).text(`#${index + 1} ${clean(candidate.id).slice(0, 8)} - ${clean(candidate.family)} - ${clean(candidate.status)}`); document.fillColor("#1f2937").font("Courier").fontSize(6.5).text(clean(JSON.stringify({ normalizedAst: candidate.normalizedAst, configuration: candidate.configuration }, null, 2)), 45, document.y + 4, { width: 505, height: 170, ellipsis: true }); document.moveDown(9); });
+    title("Export notes");
+    fields([["Metric scope", "IS, OOS and holdout metrics are calculated on their respective chronological period."], ["Equity scope", "The Candidate explorer stitches period curves for visual continuity; the period metrics above remain independent."], ["Verification scope", "Candidates do not include persisted trade-level data or a full verification audit. Promote a Candidate and run Full Verification for that report."], ["Search engine", input.run.searchAlgorithmVersion], ["Random seed", input.run.randomSeed]]);
+    footer();
+    document.end();
+  });
+}
