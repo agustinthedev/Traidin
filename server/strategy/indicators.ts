@@ -35,7 +35,7 @@ const operators = (semanticType: IndicatorSemanticType): IndicatorOperator[] => 
 };
 const semantic = (semanticType: IndicatorSemanticType, options: Partial<IndicatorOutputSemantics> = {}): IndicatorOutputSemantics => ({
   semanticType,
-  canBeNegative: !["PRICE_LEVEL", "NON_NEGATIVE_MAGNITUDE", "VOLUME_LEVEL", "VOLATILITY_LEVEL", "COUNT", "RATIO", "PERCENTAGE", "BOOLEAN", "CALENDAR_CATEGORY"].includes(semanticType),
+  canBeNegative: options.canBeNegative ?? (options.min != null && options.min >= 0 ? false : !["PRICE_LEVEL", "NON_NEGATIVE_MAGNITUDE", "VOLUME_LEVEL", "VOLATILITY_LEVEL", "COUNT", "RATIO", "PERCENTAGE", "BOOLEAN", "CALENDAR_CATEGORY"].includes(semanticType)),
   priceScaled: semanticType === "PRICE_LEVEL" || semanticType === "PRICE_DISTANCE",
   percentageScaled: semanticType === "PRICE_PERCENTAGE" || semanticType === "PERCENTAGE",
   ratioScaled: semanticType === "RATIO",
@@ -73,6 +73,18 @@ const outputSemantics = (id: string, output: string): IndicatorOutputSemantics =
   return semantic("UNBOUNDED_OSCILLATOR");
 };
 const roleFor = (outputs: string[]) => [...new Set(outputs.flatMap((output) => outputSemantics("", output).roles))];
+const templatesFor = (id: string, outputs: string[]) => [...new Set(outputs.flatMap((output) => {
+  const type = outputSemantics(id, output).semanticType;
+  if (type === "PRICE_LEVEL") return ["PRICE_CROSSOVER", "THRESHOLD_STATE"];
+  if (type === "BOUNDED_OSCILLATOR") return ["THRESHOLD_CROSS", "THRESHOLD_STATE"];
+  if (type === "CATEGORICAL_DIRECTION") return ["DIRECTION_STATE"];
+  if (type === "BOOLEAN") return ["BOOLEAN_EVENT"];
+  if (type === "RATIO" || type === "PERCENTAGE") return ["NORMALIZED_FILTER"];
+  if (type === "CALENDAR_CATEGORY") return ["CALENDAR_STATE"];
+  if (["NON_NEGATIVE_MAGNITUDE", "VOLUME_LEVEL", "VOLATILITY_LEVEL"].includes(type)) return ["FILTER_WITH_PRICE_TRIGGER"];
+  if (["CUMULATIVE_SERIES", "SIGNED_DIRECTIONAL_VALUE", "NORMALIZED_Z_SCORE"].includes(type)) return ["SERIES_CROSSOVER", "THRESHOLD_CROSS"];
+  return ["THRESHOLD_CROSS"];
+}))];
 const constraintsFor = (id: string): IndicatorParameterConstraint[] => {
   const constraints: IndicatorParameterConstraint[] = [];
   if (id === "macd") constraints.push({ name: "fast_lt_slow", description: "MACD fast period must be lower than slow period", validate: (p) => Number(p.fast) < Number(p.slow) ? null : "fast period must be lower than slow period" });
@@ -82,7 +94,7 @@ const constraintsFor = (id: string): IndicatorParameterConstraint[] => {
 };
 const definition = (id: string, name: string, category: string, fields: string[], outputs: string[], visualization: "overlay" | "subpanel", parameters = period(), warmup = (p: Record<string, unknown>) => Number(p.period ?? 14)): IndicatorDefinition => {
   const outputMetadata = Object.fromEntries(outputs.map((output) => [output, outputSemantics(id, output)]));
-  return { id, name, category, description: `${name}, calculated only from closed candles available at the evaluation timestamp.`, requiredFields: fields, parameters, parameterConstraints: constraintsFor(id), warmupBars: warmup, outputs, outputMetadata, visualization, pointInTimeSafe: true, supportedTimeframes: frames, roles: roleFor(outputs), templates: [], normalization: outputMetadata[outputs[0]]?.semanticType === "PRICE_LEVEL" ? "PRICE" : outputMetadata[outputs[0]]?.semanticType === "NORMALIZED_Z_SCORE" ? "ZSCORE" : outputMetadata[outputs[0]]?.semanticType === "RATIO" ? "RATIO" : outputMetadata[outputs[0]]?.semanticType === "BOOLEAN" ? "EVENT" : "NONE" };
+  return { id, name, category, description: `${name}, calculated only from closed candles available at the evaluation timestamp.`, requiredFields: fields, parameters, parameterConstraints: constraintsFor(id), warmupBars: warmup, outputs, outputMetadata, visualization, pointInTimeSafe: true, supportedTimeframes: frames, roles: roleFor(outputs), templates: templatesFor(id, outputs), normalization: outputMetadata[outputs[0]]?.semanticType === "PRICE_LEVEL" ? "PRICE" : outputMetadata[outputs[0]]?.semanticType === "NORMALIZED_Z_SCORE" ? "ZSCORE" : outputMetadata[outputs[0]]?.semanticType === "RATIO" ? "RATIO" : outputMetadata[outputs[0]]?.semanticType === "BOOLEAN" ? "EVENT" : "NONE" };
 };
 
 export const indicatorRegistry: Record<string, IndicatorDefinition> = Object.fromEntries([
@@ -182,7 +194,7 @@ export const indicatorRegistry: Record<string, IndicatorDefinition> = Object.fro
 // Parameter ranges are deliberately indicator-specific. This prevents a generic
 // 2..500 sampler from creating warm-up-heavy or semantically meaningless rules.
 const parameterOverrides: Record<string, Record<string, IndicatorParameter>> = {
-  macd: { fast: { type: "integer", default: 12, min: 2, max: 100 }, slow: { type: "integer", default: 26, min: 5, max: 300 }, signal: { type: "integer", default: 9, min: 2, max: 50 } }, supertrend: { period: { type: "integer", default: 10, min: 2, max: 100 }, multiple: { type: "number", default: 3, min: .5, max: 8 } },
+  sma: period(20, 200), ema: period(20, 200), wma: period(20, 200), vwma: period(20, 200), linear_regression_slope: period(20, 100), money_flow_index: period(14, 100), chaikin_money_flow: period(14, 100), macd: { fast: { type: "integer", default: 12, min: 2, max: 100 }, slow: { type: "integer", default: 26, min: 5, max: 300 }, signal: { type: "integer", default: 9, min: 2, max: 50 } }, supertrend: { period: { type: "integer", default: 10, min: 2, max: 100 }, multiple: { type: "number", default: 3, min: .5, max: 8 } },
   rsi: period(14, 50), stochastic: period(14, 50), stochastic_rsi: { rsiPeriod: { type: "integer", default: 14, min: 2, max: 50 }, period: { type: "integer", default: 14, min: 2, max: 50 } }, williams_r: period(14, 50), cci: period(20, 100), roc: period(12, 100), momentum: period(10, 100),
   adx: period(14, 100), atr: period(14, 100), atr_percent: period(14, 100), true_range: {}, bollinger: { period: { type: "integer", default: 20, min: 2, max: 100 }, deviations: { type: "number", default: 2, min: 0.1, max: 4 } }, keltner: { period: { type: "integer", default: 20, min: 2, max: 100 }, atrPeriod: { type: "integer", default: 10, min: 2, max: 100 }, multiple: { type: "number", default: 2, min: .1, max: 8 } }, choppiness_index: period(14, 100), rolling_stddev: period(20, 100), historical_volatility: period(20, 100), volatility_percentile: { period: { type: "integer", default: 20, min: 5, max: 100 }, rankPeriod: { type: "integer", default: 100, min: 20, max: 250 } },
   volume_sma: period(20, 100), relative_volume: period(20, 100), volume_zscore: period(20, 100), quote_volume_sma: period(20, 100), relative_quote_volume: period(20, 100), quote_volume_zscore: period(20, 100), relative_trade_count: period(20, 100), trade_count_zscore: period(20, 100), delta_ema: period(20, 100), delta_zscore: period(20, 100), taker_buy_ratio_ema: period(20, 100),
@@ -206,6 +218,7 @@ export function validateIndicatorRegistry(registry: Record<string, IndicatorDefi
   for (const [id, definition] of Object.entries(registry)) {
     if (definition.id !== id) errors.push(`${id}: stable id does not match registry key`);
     if (!definition.outputs.length) errors.push(`${id}: at least one output is required`);
+    if (!definition.templates.length) errors.push(`${id}: at least one generation template is required`);
     if (!definition.outputMetadata || definition.outputs.some((output) => !definition.outputMetadata[output])) errors.push(`${id}: every output requires semantic metadata`);
     for (const [name, parameter] of Object.entries(definition.parameters)) {
       if (!Number.isFinite(parameter.min) || !Number.isFinite(parameter.max) || parameter.min > parameter.max || parameter.default < parameter.min || parameter.default > parameter.max) errors.push(`${id}.${name}: invalid parameter range`);

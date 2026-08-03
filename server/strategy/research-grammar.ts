@@ -59,7 +59,7 @@ function validateLeaf(node: LeafCondition, path: string, issues: ValidationIssue
     const constant = node.right.type === "constant" ? node.right.value : null;
     if (constant != null && left) {
       if (left.min != null && constant < left.min || left.max != null && constant > left.max) issues.push(error("CONSTANT_OUT_OF_RANGE", path, `${referenceLabel(node.left)} threshold ${constant} is outside [${left.min}, ${left.max}]`));
-      if (["NON_NEGATIVE_MAGNITUDE", "VOLUME_LEVEL", "VOLATILITY_LEVEL"].includes(left.semanticType) && [">", "<"].includes(node.operator) && constant <= 0) issues.push(error("DEGENERATE_NON_NEGATIVE_SIGN_TEST", path, `${referenceLabel(node.left)} is non-negative; a directional ${node.operator} ${constant} test is degenerate`));
+      if ((["NON_NEGATIVE_MAGNITUDE", "VOLUME_LEVEL", "VOLATILITY_LEVEL"].includes(left.semanticType) || left.min != null && left.min >= 0) && [">", "<"].includes(node.operator) && constant <= (left.min ?? 0)) issues.push(error("DEGENERATE_NON_NEGATIVE_SIGN_TEST", path, `${referenceLabel(node.left)} is non-negative; a directional ${node.operator} ${constant} test is degenerate`));
       if (left.semanticType === "CALENDAR_CATEGORY" && [">", ">=", "<", "<="].includes(node.operator)) issues.push(error("ORDINAL_CALENDAR_COMPARISON", path, "Calendar categories require equality, membership, or interval templates"));
       if (left.semanticType === "CATEGORICAL_DIRECTION" && [">", ">=", "<", "<=", "crosses_above", "crosses_below"].includes(node.operator) && ![-1, 0, 1].includes(constant)) issues.push(error("INVALID_DIRECTION_STATE", path, "Directional state must be compared with -1, 0, or 1"));
     }
@@ -95,7 +95,7 @@ export function validateCandidateSemantics(config: StrategyConfig): ValidationRe
   for (const long of longLeaves) for (const short of shortLeaves) {
     if (!sameReference(long.node.left, short.node.left)) continue;
     const left = semantics(long.node.left), l = long.node.right && !Array.isArray(long.node.right) && long.node.right.type === "constant" ? long.node.right.value : null, s = short.node.right && !Array.isArray(short.node.right) && short.node.right.type === "constant" ? short.node.right.value : null;
-    if (left && ["NON_NEGATIVE_MAGNITUDE", "VOLUME_LEVEL", "VOLATILITY_LEVEL"].includes(left.semanticType) && l === 0 && s === 0 && long.node.operator === ">" && short.node.operator === "<") issues.push(error("NAIVE_NON_NEGATIVE_DIRECTION_PAIR", "entry", `${referenceLabel(long.node.left)} cannot be used as > 0 long and < 0 short`));
+    if (left && (["NON_NEGATIVE_MAGNITUDE", "VOLUME_LEVEL", "VOLATILITY_LEVEL"].includes(left.semanticType) || left.min != null && left.min >= 0 || left.semanticType === "CUMULATIVE_SERIES") && l === 0 && s === 0 && long.node.operator === ">" && short.node.operator === "<") issues.push(error("NAIVE_NON_NEGATIVE_DIRECTION_PAIR", "entry", `${referenceLabel(long.node.left)} cannot be used as > 0 long and < 0 short`));
   }
   try { issues.push(...validateStrategyConfiguration(config).map((message) => error("STRATEGY_CONFIGURATION", "configuration", message))); } catch (cause) { issues.push(error("STRATEGY_CONFIGURATION", "configuration", cause instanceof Error ? cause.message : "Invalid configuration")); }
   return { valid: !issues.some((issue) => issue.severity === "ERROR"), issues, errors: issues.filter((issue) => issue.severity === "ERROR").map((issue) => issue.message) };

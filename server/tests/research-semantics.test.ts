@@ -26,6 +26,14 @@ describe("semantic discovery grammar", () => {
     const invalidSupertrend = strategyConfigSchema.parse({ ...generated, longEntry: { left: { type: "price", field: "close", timeframe: "1h" }, operator: "crosses_above", right: { type: "indicator", indicator: "supertrend", parameters: { period: 10, multiple: 3 }, timeframe: "1h", output: "direction" } } });
     expect(validateCandidateSemantics(invalidSupertrend).errors).toEqual(expect.arrayContaining([expect.stringContaining("Categorical outputs")]));
   });
+  it("rejects bounded non-negative MFI and raw cumulative OBV sign pairs", () => {
+    const generated = candidateConfig(run({ allowedIndicators: ["ema"] }), 0).config;
+    for (const [indicator, output, parameters] of [["money_flow_index", "mfi", { period: 14 }], ["obv", "obv", {}]] as const) {
+      const invalid = strategyConfigSchema.parse({ ...generated, longEntry: { left: { type: "indicator", indicator, parameters, timeframe: "1h", output }, operator: ">", right: { type: "constant", value: 0 } }, shortEntry: { left: { type: "indicator", indicator, parameters, timeframe: "1h", output }, operator: "<", right: { type: "constant", value: 0 } } });
+      expect(validateCandidateSemantics(invalid).errors).toEqual(expect.arrayContaining([expect.stringContaining("cannot be used as > 0 long and < 0 short")]));
+    }
+    expect(indicatorOutputSemantics("money_flow_index", "mfi").canBeNegative).toBe(false);
+  });
   it("generates deterministic multi-condition candidates with meaningful complexity", () => {
     const input = run({ allowedIndicators: ["ema", "rsi", "relative_volume"] });
     const first = candidateConfig(input, 1), second = candidateConfig(input, 1);
