@@ -17,6 +17,7 @@ import { gapRepairWorker } from "./workers/gap-repair.js";
 import { liveIngestionWorker } from "./workers/live-ingestion.js";
 import { aggregationEngine } from "./workers/aggregation.js";
 import { verificationWorker } from "./strategy/verification-worker.js";
+import { researchWorker } from "./strategy/research-worker.js";
 import { systemStateRepository } from "./db/repository.js";
 
 const app = Fastify({
@@ -70,6 +71,7 @@ async function start() {
     await backfillWorker.start();
   }
   verificationWorker.start();
+  await researchWorker.start();
   await app.listen({ host: config.API_HOST, port: config.API_PORT });
   await eventBus.emit({
     level: "INFO",
@@ -84,6 +86,7 @@ async function shutdown() {
   gapRepairWorker.stop();
   aggregationEngine.stop();
   verificationWorker.stop();
+  researchWorker.stop();
   await app.close();
   sqlite.close();
 }
