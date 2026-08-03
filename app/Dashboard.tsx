@@ -22,26 +22,28 @@ import Settings from "./dashboard/SettingsCompat";
 import CandlestickChart from "./dashboard/CandlestickChart";
 import StrategyVerification from "./dashboard/StrategyVerification";
 import StrategiesCatalog from "./dashboard/StrategiesCatalog";
+import StrategyLab from "./dashboard/StrategyLab";
 import { ToastViewport } from "./dashboard/toast";
 
-type Tab = "Overview" | "Live Market" | "Historical Data" | "Backfill Jobs" | "Data Quality" | "Symbols" | "Database" | "System Events" | "Settings" | "Strategies" | "Strategy Builder" | "Strategy Verifier";
+type Tab = "Overview" | "Live Market" | "Historical Data" | "Backfill Jobs" | "Data Quality" | "Symbols" | "Database" | "System Events" | "Settings" | "Strategies" | "Strategy Builder" | "Strategy Lab" | "Strategy Verifier";
 
 const NAV_GROUPS: Array<{ label: string; items: readonly Tab[] }> = [
   { label: "Workspace", items: ["Overview"] },
   { label: "Market data", items: ["Live Market", "Historical Data", "Data Quality", "Symbols"] },
-  { label: "Research", items: ["Strategies", "Strategy Builder", "Strategy Verifier"] },
+  { label: "Research", items: ["Strategies", "Strategy Builder", "Strategy Lab", "Strategy Verifier"] },
   { label: "Operations", items: ["Backfill Jobs", "Database", "System Events"] },
   { label: "System", items: ["Settings"] },
 ];
 
 function NavIcon({ name }: { name: Tab }) {
-  const glyphs: Record<Tab, string> = {
+  const glyphs: Partial<Record<Tab, string>> = {
     Overview: "⌂", "Live Market": "↗", "Historical Data": "◫", "Backfill Jobs": "◌", "Data Quality": "✓", Symbols: "◇", Database: "▣", "System Events": "≋", Settings: "⚙", Strategies: "⌘", "Strategy Verifier": "◈",
     "Strategy Builder": "◇",
   };
+  glyphs["Strategy Lab"] ??= "◌";
   return <span className="nav-icon" aria-hidden="true">{glyphs[name]}</span>;
 }
-export default function Dashboard({ initialTab = "Overview", initialStrategyId }: { initialTab?: Tab; initialStrategyId?: string }) {
+export default function Dashboard({ initialTab = "Overview", initialStrategyId, initialResearchRunId }: { initialTab?: Tab; initialStrategyId?: string; initialResearchRunId?: string }) {
   const [tab, setTab] = useState<Tab>(initialTab);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [status, setStatus] = useState<AnyRow | null>(null);
@@ -136,7 +138,7 @@ export default function Dashboard({ initialTab = "Overview", initialStrategyId }
               <div className="nav-group" key={group.label}>
                 <p>{group.label}</p>
                 {group.items.map((item) => (
-                  <button key={item} className={tab === item ? "active" : ""} onClick={() => { setTab(item); const route: Partial<Record<Tab, string>> = { Strategies: "/strategies", "Strategy Builder": "/strategy-builder", "Strategy Verifier": "/strategy-verifier" }; if (route[item]) window.history.pushState({}, "", route[item]); }} aria-current={tab === item ? "page" : undefined} title={sidebarCollapsed ? item : undefined}>
+                  <button key={item} className={tab === item ? "active" : ""} onClick={() => { setTab(item); const route: Partial<Record<Tab, string>> = { Strategies: "/strategies", "Strategy Builder": "/strategy-builder", "Strategy Lab": "/strategy-lab", "Strategy Verifier": "/strategy-verifier" }; if (route[item]) window.history.pushState({}, "", route[item]); }} aria-current={tab === item ? "page" : undefined} title={sidebarCollapsed ? item : undefined}>
                     <NavIcon name={item} />
                     <span className="nav-label">{item}</span>
                     {item === "Backfill Jobs" && activeJobs > 0 && <b>{activeJobs}</b>}
@@ -200,6 +202,7 @@ export default function Dashboard({ initialTab = "Overview", initialStrategyId }
           )}
           {tab === "Strategies" && <StrategiesCatalog initialStrategyId={initialStrategyId} onOpenBuilder={() => { setTab("Strategy Builder"); window.history.pushState({}, "", "/strategy-builder"); }} onOpenVerifier={() => { setTab("Strategy Verifier"); window.history.pushState({}, "", "/strategy-verifier"); }} />}
           {tab === "Strategy Builder" && <StrategyVerification mode="builder" symbols={status?.config?.symbols ?? []} refreshShell={refresh} />}
+          {tab === "Strategy Lab" && <StrategyLab initialRunId={initialResearchRunId} />}
           {tab === "Strategy Verifier" && <StrategyVerification mode="verifier" symbols={status?.config?.symbols ?? []} refreshShell={refresh} />}
         </section>
       </div>
