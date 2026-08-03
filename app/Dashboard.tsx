@@ -109,7 +109,7 @@ export default function Dashboard() {
         <div className="brand">
           {/* Static app mark; its tiny intrinsic dimensions avoid meaningful image optimization overhead. */}
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img className="brand-mark" src="/treidin-mark-v2-256.png" alt="Treidin" />
+          <img className="brand-mark" src="/treidin-mark-v3-256.png" alt="Treidin" />
           <div>
             <strong>TREIDIN</strong>
             <small>MARKET DATA / USDⓈ-M</small>

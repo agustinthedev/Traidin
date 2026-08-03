@@ -11,8 +11,8 @@ export const metadata: Metadata = {
   title: "Treidin Market Data",
   description: "Auditable Binance USDⓈ-M Futures market data terminal.",
   icons: {
-    icon: "/treidin-mark-v2-256.png",
-    shortcut: "/treidin-mark-v2-256.png",
+    icon: "/treidin-mark-v3-256.png",
+    shortcut: "/treidin-mark-v3-256.png",
   },
 };
 
