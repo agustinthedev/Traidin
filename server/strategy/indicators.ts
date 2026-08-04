@@ -75,15 +75,29 @@ const outputSemantics = (id: string, output: string): IndicatorOutputSemantics =
 const roleFor = (outputs: string[]) => [...new Set(outputs.flatMap((output) => outputSemantics("", output).roles))];
 const templatesFor = (id: string, outputs: string[]) => [...new Set(outputs.flatMap((output) => {
   const type = outputSemantics(id, output).semanticType;
-  if (type === "PRICE_LEVEL") return ["PRICE_CROSSOVER", "THRESHOLD_STATE"];
-  if (type === "BOUNDED_OSCILLATOR") return ["THRESHOLD_CROSS", "THRESHOLD_STATE"];
-  if (type === "CATEGORICAL_DIRECTION") return ["DIRECTION_STATE"];
+  if (id === "rsi") return ["RSI_MOMENTUM_THRESHOLD", "RSI_MEAN_REVERSION_CROSS"];
+  if (id === "stochastic" || id === "stochastic_rsi") return ["STOCHASTIC_THRESHOLD_CROSS"];
+  if (id === "cci") return ["CCI_ZERO_EXTREME_CROSS"];
+  if (id === "roc") return ["ROC_ZERO_CROSS"];
+  if (["sma", "ema", "wma", "vwma"].includes(id)) return ["PRICE_ABOVE_BELOW_MA", "PRICE_MA_CROSSOVER"];
+  if (id === "moving_average_alignment") return ["FAST_SLOW_MA_CROSS"];
+  if (id === "macd") return output === "histogram" ? ["MACD_HISTOGRAM_ZERO_CROSS"] : ["MACD_LINE_SIGNAL_CROSS"];
+  if (id === "adx") return output === "adx" ? ["ADX_TREND_STRENGTH_FILTER", "DMI_DIRECTIONAL_CROSS"] : ["DMI_DIRECTIONAL_CROSS"];
+  if (id === "donchian_breakout" || id === "donchian") return ["DONCHIAN_BREAKOUT"];
+  if (id === "bollinger") return [output === "middle" || output === "upper" || output === "lower" ? "BOLLINGER_BREAKOUT" : "BOLLINGER_REENTRY"];
+  if (id === "supertrend") return output === "direction" ? ["SUPERTREND_DIRECTION_CHANGE"] : ["PRICE_SUPERTREND_CROSS"];
+  if (["relative_volume", "relative_quote_volume", "relative_trade_count"].includes(id) || ["relative_volume", "relative_quote_volume", "relative_trade_count"].includes(output)) return ["RELATIVE_VOLUME_CONFIRMATION", "RELATIVE_VOLUME_TRIGGER", "VOLUME_EXPANSION_CONFIRMATION"];
+  if (id === "atr" || id === "atr_percent" || type === "VOLATILITY_LEVEL" || type === "PRICE_PERCENTAGE") return ["ATR_VOLATILITY_REGIME_FILTER"];
   if (type === "BOOLEAN") return ["BOOLEAN_EVENT"];
+  if (type === "CALENDAR_CATEGORY") return ["CALENDAR_MEMBERSHIP_FILTER"];
+  if (type === "CATEGORICAL_DIRECTION") return ["CATEGORICAL_STATE"];
+  if (type === "BOUNDED_OSCILLATOR") return ["BOUNDED_THRESHOLD"];
+  if (type === "PRICE_LEVEL") return ["PRICE_ABOVE_BELOW_MA", "PRICE_MA_CROSSOVER"];
   if (type === "RATIO" || type === "PERCENTAGE") return ["NORMALIZED_FILTER"];
-  if (type === "CALENDAR_CATEGORY") return ["CALENDAR_STATE"];
-  if (["NON_NEGATIVE_MAGNITUDE", "VOLUME_LEVEL", "VOLATILITY_LEVEL"].includes(type)) return ["FILTER_WITH_PRICE_TRIGGER"];
-  if (["CUMULATIVE_SERIES", "SIGNED_DIRECTIONAL_VALUE", "NORMALIZED_Z_SCORE"].includes(type)) return ["SERIES_CROSSOVER", "THRESHOLD_CROSS"];
-  return ["THRESHOLD_CROSS"];
+  if (["NON_NEGATIVE_MAGNITUDE", "VOLUME_LEVEL", "COUNT"].includes(type)) return ["MAGNITUDE_FILTER"];
+  if (["CUMULATIVE_SERIES", "SIGNED_DIRECTIONAL_VALUE", "NORMALIZED_Z_SCORE"].includes(type)) return ["SIGNED_SERIES_CROSS"];
+  if (["UNBOUNDED_OSCILLATOR", "PRICE_DISTANCE", "PRICE_PERCENTAGE"].includes(type)) return ["UNBOUNDED_THRESHOLD"];
+  throw new Error(`UNREGISTERED_SEMANTIC_TEMPLATE:${id}.${output}:${type}`);
 }))];
 const constraintsFor = (id: string): IndicatorParameterConstraint[] => {
   const constraints: IndicatorParameterConstraint[] = [];

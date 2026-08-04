@@ -22,6 +22,10 @@ const stateTone = (value?: string) =>
         ].includes(value ?? "")
       ? "failed"
       : "warn";
+const primaryOutcome = (run: Row) =>
+  run.terminalOutcome && !["PENDING", "LEGACY"].includes(run.terminalOutcome)
+    ? run.terminalOutcome
+    : run.status;
 const short = (value?: string) => (value ? value.slice(0, 8) : "—");
 const metricNumber = (value: unknown, max = 2) =>
   value == null ? "—" : fmtNum(value, max);
@@ -178,9 +182,14 @@ export default function StrategyLab({
               onClick={() => void open(run.id)}
             >
               <div>
-                <span className={`tag ${stateTone(run.status)}`}>
-                  {run.status}
+                <span className={`tag ${stateTone(primaryOutcome(run))}`}>
+                  {primaryOutcome(run)}
                 </span>
+                {primaryOutcome(run) !== run.status && (
+                  <small className="operational-status">
+                    Operational: {run.status}
+                  </small>
+                )}
                 <span className={`tag ${stateTone(run.health)}`}>
                   {run.health}
                 </span>
@@ -693,10 +702,27 @@ function ResearchRunDetail({
     }
   };
   const funnel = [
-    ["Generated", run.generatedCount],
-    ["IS passed", run.isSurvivorCount],
-    ["OOS passed", run.oosSurvivorCount],
-    ["Finalists", run.finalistCount],
+    ["Requested", run.candidateBudget],
+    ["Attempts", run.generationAttemptCount],
+    ["Generation errors", run.generationErrorCount],
+    ["Raw generated", run.generatedRawCount],
+    ["Static rejected", run.staticRejectedCount],
+    ["Preflight rejected", run.preflightRejectedCount],
+    ["Exact duplicates", run.exactDuplicateCount],
+    ["Semantic duplicates", run.semanticDuplicateCount],
+    [
+      "Accepted unique",
+      run.acceptedValidUniqueCount ?? run.acceptedCandidateCount,
+    ],
+    ["Queued IS", run.queuedForIsCount],
+    ["Evaluated IS", run.evaluatedInIsCount ?? run.isTestedCount],
+    ["Rejected IS", run.rejectedInIsCount],
+    ["Advanced OOS", run.advancedToOosCount ?? run.isSurvivorCount],
+    ["Rejected OOS", run.rejectedInOosCount],
+    ["Advanced Holdout", run.advancedToHoldoutCount ?? run.oosSurvivorCount],
+    ["Rejected Holdout", run.rejectedInHoldoutCount],
+    ["Evaluation failed", run.evaluationFailedCount],
+    ["Cancelled", run.cancelledCount],
     ["Promoted", run.promotedCount],
   ];
   const canDelete = ["DRAFT", "COMPLETED", "FAILED", "CANCELLED"].includes(
@@ -774,7 +800,14 @@ function ResearchRunDetail({
       </button>
       <section className="research-hero">
         <div>
-          <span className={`tag ${stateTone(run.status)}`}>{run.status}</span>
+          <span className={`tag ${stateTone(primaryOutcome(run))}`}>
+            {primaryOutcome(run)}
+          </span>
+          {primaryOutcome(run) !== run.status && (
+            <small className="operational-status">
+              Operational: {run.status}
+            </small>
+          )}
           <span className={`tag ${stateTone(run.health)}`}>{run.health}</span>
           {run.terminalOutcome && (
             <span className={`tag ${stateTone(run.terminalOutcome)}`}>
@@ -863,6 +896,15 @@ function ResearchRunDetail({
                   ? "Evaluated, not exposed"
                   : "Not evaluated"}
             </dd>
+            <dt>Accounting reconciliation</dt>
+            <dd>
+              {run.reconciliationStatus ?? "LEGACY"}{" "}
+              {run.reconciliationMismatch
+                ? `(mismatch ${run.reconciliationMismatch})`
+                : ""}
+            </dd>
+            <dt>Completion reason</dt>
+            <dd>{run.completionReason ?? "—"}</dd>
           </dl>
         </section>
       )}
@@ -1259,6 +1301,39 @@ function CandidateExplorer({
             {candidate.humanDescription ??
               "Description unavailable for this legacy Candidate."}
           </pre>
+        </section>
+        <section className="candidate-diagnostics">
+          <div>
+            <small>TEMPLATES / ROLES</small>
+            <pre>
+              {JSON.stringify(
+                {
+                  templates: candidate.templateIds,
+                  versions: candidate.templateVersions,
+                  predicates: candidate.predicateMetadata,
+                },
+                null,
+                2,
+              )}
+            </pre>
+          </div>
+          <div>
+            <small>VALIDATION / REJECTION</small>
+            <pre>
+              {JSON.stringify(
+                {
+                  structural: candidate.structuralValidation,
+                  simplification: candidate.structuralActions,
+                  preflight: candidate.preflightDiagnostics,
+                  duplicateOf: candidate.duplicateOfCandidateId,
+                  stage: candidate.rejectionStage,
+                  code: candidate.rejectionReason,
+                },
+                null,
+                2,
+              )}
+            </pre>
+          </div>
         </section>
         <CandidateEquityChart candidate={candidate} run={run} />
         <section className="candidate-metrics">

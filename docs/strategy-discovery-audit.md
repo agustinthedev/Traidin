@@ -53,3 +53,12 @@ To add an indicator:
 ## Known limitations
 
 The current candidate grammar intentionally keeps exit generation conservative (fixed percentage stop plus fixed R take-profit); the typed strategy model already supports ATR/structure/trailing policies for future templates. Empirical preflight is a fast signal sanity check, not a substitute for the full simulator. Legacy runs cannot be retroactively reclassified because doing so would silently reinterpret persisted research.
+## Research worker ownership and audit policy
+
+Research workers use an atomic `(research_run_id, worker_id, claim_token, lease)` ownership tuple. Heartbeats, progress, candidate writes, stage metrics, generation-attempt rows, and terminal transitions are conditional on that tuple; a stale worker receives `STALE_WORKER_OWNERSHIP` and stops without retrying under the old claim.
+
+An expired lease is not silently re-executed. The watchdog marks the run `FAILED` with `WORKER_LEASE_EXPIRED`; an operator must explicitly launch the failed run again. `reclaimExpired` is an explicit recovery action used by the race tests. A worker process restart does not reclaim terminal `FAILED`, `CANCELLED`, or `COMPLETED` runs.
+
+Every generation attempt is durable and must reconcile as `generation attempts = generation errors + raw generated`, with raw generated partitioned into named terminal categories. A mismatch is persisted as `MISMATCH` and prevents a normal completion outcome.
+
+Discovery fingerprints include requested and context ranges, required/actual warmup bars, missing bars, timeframe alignment, split boundaries, and warmup policy version. Context initializes indicators but is excluded from stage P&L windows.
