@@ -164,11 +164,11 @@ const factory = (
   standAlone: role === "DIRECTIONAL_TRIGGER",
   complementBehavior,
   parameterGeneration: paramsFor,
-  operandGeneration: (indicator, output, parameters, random) =>
+  operandGeneration: (indicator, output, parameters) =>
     reference(indicator, parameters, "1m", output),
   buildLong: (operand, _timeframe, random) => build(operand, random).long,
   buildShort: (operand, _timeframe, random) => build(operand, random).short,
-  validate: (indicator, output, parameters) => {
+  validate: (indicator, output) => {
     const metadata = indicatorOutputSemantics(indicator, output);
     return metadata ? [] : [`UNKNOWN_OUTPUT:${indicator}.${output}`];
   },
@@ -184,7 +184,7 @@ const templates: ResearchTemplate[] = [
     "DIRECTIONAL_TRIGGER",
     ["BOUNDED_OSCILLATOR"],
     "COMPLEMENTARY",
-    (o, r) => ({
+    (o) => ({
       long: threshold("crossAbove", 0, 100)(o),
       short: threshold("crossBelow", 0, 100)(o),
     }),
