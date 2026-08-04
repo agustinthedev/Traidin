@@ -1,6 +1,6 @@
-# Treidin Market Data
+# Treidin Market Data & Research
 
-The first phase of a local market-data platform for Binance USD-M Futures. It receives 1-minute BTCUSDT and ETHUSDT candles, maintains historical data, repairs gaps, creates higher timeframes, and provides an operations dashboard. Persistence is exclusively SQLite; PostgreSQL, Docker, and infrastructure services are not required.
+Treidin is a local market-data and strategy-research platform for Binance USD-M Futures. It receives 1-minute BTCUSDT and ETHUSDT candles, maintains historical data, repairs gaps, creates higher timeframes, and provides an operations dashboard. The research workspace supports versioned strategies, candidate generation, and reproducible offline verification. Persistence is exclusively SQLite; PostgreSQL, Docker, and infrastructure services are not required.
 
 ## Quick start
 
@@ -35,6 +35,17 @@ npm run db:optimize      PRAGMA optimize + ANALYZE
 
 Configuration is documented in [local development](docs/local-development.md), the design in [architecture](docs/architecture.md), storage in [SQLite storage design](docs/sqlite-storage-design.md), the [performance test](docs/performance-results.md), and live-stream inspection in [Binance WebSocket payload analysis](docs/binance-websocket-payload-analysis.md).
 
+## Research workspace
+
+The dashboard's Research section provides:
+
+- **Strategies**: a catalog of strategy definitions, immutable versions, lifecycle state, verification coverage, and research provenance.
+- **Strategy Builder**: create and publish strategy versions from the backend indicator registry.
+- **Strategy Lab**: define reproducible research runs across in-sample, out-of-sample, and holdout periods; generate and rank candidates; inspect persisted outcomes; and promote holdout-confirmed candidates into versioned strategies.
+- **Strategy Verifier**: check historical availability and indicator warmup, then run offline verification with reproducible metrics and diagnostic reports.
+
+Research runs and verification are local simulations over persisted market data. They do not place orders or connect to a trading account.
+
 ## Scope
 
-Includes ingestion, historical data, data quality, aggregation, observability, and the dashboard. It does not include strategies, agents, backtesting, paper trading, positions, or order execution.
+Includes ingestion, historical data, data quality, aggregation, observability, strategy research, offline simulation, verification, and the dashboard. It does not include paper trading, positions, live trading, or order execution.
